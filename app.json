@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "FinanzApp",
+    "slug": "finanzapp",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "finanzapp",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "cl.finanzapp.app"
+    },
+    "android": {
+      "package": "cl.finanzapp.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

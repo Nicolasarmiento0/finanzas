@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+backend/node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Cloudflare Wrangler
+.wrangler/
+backend/.wrangler/
+.dev.vars
+backend/.dev.vars
+
+# macOS
+.DS_Store
+
+.dev.vars*
+!.dev.vars.example
+.env*
+!.env.example

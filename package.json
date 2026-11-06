@@ -1,0 +1,45 @@
+{
+  "name": "finanzapp",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "postinstall": "node scripts/patch-expo-xcode27.cjs",
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "export:web": "expo export --platform web",
+    "deploy:web": "expo export --platform web && ./backend/node_modules/.bin/wrangler deploy --config=wrangler.jsonc",
+    "typecheck": "tsc --noEmit",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:deploy": "npm --prefix backend run deploy"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~4.0.1",
+    "@react-navigation/native": "^7.0.14",
+    "expo": "~52.0.0",
+    "expo-asset": "~11.0.5",
+    "expo-blur": "~14.0.3",
+    "expo-constants": "~17.0.8",
+    "expo-font": "~13.0.4",
+    "expo-linking": "~7.0.5",
+    "expo-router": "~4.0.17",
+    "expo-secure-store": "~14.0.1",
+    "expo-status-bar": "~2.0.1",
+    "lucide-react-native": "^0.475.0",
+    "query-string": "^7.1.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-native": "0.76.9",
+    "react-native-safe-area-context": "4.12.0",
+    "react-native-screens": "~4.4.0",
+    "react-native-svg": "15.8.0",
+    "react-native-web": "~0.19.13"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@types/react": "~18.3.12",
+    "typescript": "~5.3.3"
+  }
+}

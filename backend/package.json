@@ -1,0 +1,19 @@
+{
+  "name": "finanzapp-backend",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev -c ./wrangler.toml",
+    "deploy": "wrangler deploy -c ./wrangler.toml",
+    "db:migrate:local": "wrangler d1 execute finanzapp-db -c ./wrangler.toml --local -y --file=./src/db/schema.sql",
+    "db:migrate:remote": "wrangler d1 execute finanzapp-db -c ./wrangler.toml --remote -y --file=./src/db/schema.sql"
+  },
+  "dependencies": {
+    "hono": "^4.7.4"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261103.1",
+    "typescript": "^5.8.2",
+    "wrangler": "^4.0.0"
+  }
+}

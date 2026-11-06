@@ -1,0 +1,8 @@
+name = "finanzapp-api"
+main = "src/index.ts"
+compatibility_date = "2025-03-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "finanzapp-db"
+database_id = "214454cd-79d7-467c-81cc-907830a7705b"
