@@ -58,6 +58,7 @@ const INSTALLMENT_PRESETS = [
 
 const CARD_CHARGE_CATEGORIES = [
   'suscripciones',
+  'alimentacion',
   'tecnologia',
   'transporte',
   'salud',
@@ -66,6 +67,14 @@ const CARD_CHARGE_CATEGORIES = [
   'fijo',
   'general',
 ];
+
+function formatCategoryLabel(cat: string): string {
+  const clean = (cat || '').toLowerCase().trim();
+  if (clean === 'alimentacion') return 'ALIMENTACIÓN';
+  if (clean === 'tecnologia') return 'TECNOLOGÍA';
+  if (clean === 'prestamo') return 'PRÉSTAMO';
+  return clean.toUpperCase();
+}
 
 interface CreditCardsSectionProps {
   period: string;
@@ -778,7 +787,7 @@ export function CreditCardsSection({
                                 selected && { color: catColor, fontWeight: '700' },
                               ]}
                             >
-                              {cat.toUpperCase()}
+                              {formatCategoryLabel(cat)}
                             </Text>
                           </Pressable>
                         );
@@ -929,7 +938,7 @@ export function CreditCardsSection({
                                     { color: getCategoryColor(item.category || 'general') },
                                   ]}
                                 >
-                                  {(item.category || 'GENERAL').toUpperCase()}
+                                  {formatCategoryLabel(item.category || 'general')}
                                 </Text>
                               </View>
                             </View>

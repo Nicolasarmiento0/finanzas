@@ -235,8 +235,3 @@ npm run backend:dev    # Ejecuta el servidor local de desarrollo de Cloudflare W
 npm run backend:deploy # Despliega los cambios de la API a Cloudflare Workers en producción
 ```
 
----
-
-## 📄 Licencia
-
-Este proyecto está distribuido bajo la licencia **MIT**. Consulta el archivo `LICENSE` para más detalles.
