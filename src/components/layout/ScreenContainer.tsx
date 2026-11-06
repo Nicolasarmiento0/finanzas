@@ -38,13 +38,14 @@ export function ScreenContainer({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,
             !isDesktop && [
               styles.scrollContentMobile,
               {
                 paddingTop: Math.max(insets.top, 16),
-                paddingBottom: 100 + insets.bottom,
+                paddingBottom: 110 + insets.bottom,
               },
             ],
             centered && styles.centeredContent,
@@ -52,7 +53,15 @@ export function ScreenContainer({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.innerContainer, { maxWidth }, contentStyle]}>
+          <View
+            style={[
+              styles.innerContainer,
+              isDesktop
+                ? { maxWidth, alignSelf: 'center' }
+                : styles.innerContainerMobile,
+              contentStyle,
+            ]}
+          >
             {children}
           </View>
         </ScrollView>
@@ -64,10 +73,19 @@ export function ScreenContainer({
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: colors.background,
   },
   flex: {
     flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  scrollView: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   ambientGlowTop: {
     position: 'absolute',
@@ -89,10 +107,14 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    width: '100%',
+    alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
   },
   scrollContentMobile: {
+    width: '100%',
+    alignItems: 'stretch',
     paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 120,
@@ -103,6 +125,12 @@ const styles = StyleSheet.create({
   },
   innerContainer: {
     width: '100%',
-    alignSelf: 'center',
+    flexGrow: 1,
+  },
+  innerContainerMobile: {
+    width: '100%',
+    maxWidth: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
   },
 });

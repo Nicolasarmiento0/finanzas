@@ -569,14 +569,24 @@ export function SavingsForecastSection({
                 !formIsShared && styles.segmentOptionActive,
               ]}
             >
-              <Text
-                style={[
-                  styles.segmentOptionText,
-                  !formIsShared && styles.segmentOptionTextActive,
-                ]}
-              >
-                👤 Individual (Solo yo)
-              </Text>
+              <View style={styles.segmentOptionContent}>
+                <PiggyBank
+                  size={15}
+                  color={
+                    !formIsShared
+                      ? colors.buttonPrimaryText
+                      : colors.textSecondary
+                  }
+                />
+                <Text
+                  style={[
+                    styles.segmentOptionText,
+                    !formIsShared && styles.segmentOptionTextActive,
+                  ]}
+                >
+                  Individual (Solo yo)
+                </Text>
+              </View>
             </Pressable>
             <Pressable
               onPress={() => setFormIsShared(true)}
@@ -585,14 +595,32 @@ export function SavingsForecastSection({
                 formIsShared && styles.segmentOptionActive,
               ]}
             >
-              <Text
-                style={[
-                  styles.segmentOptionText,
-                  formIsShared && styles.segmentOptionTextActive,
-                ]}
-              >
-                👥 En Pareja (Compartido)
-              </Text>
+              <View style={styles.segmentOptionContent}>
+                <PiggyBank
+                  size={15}
+                  color={
+                    formIsShared
+                      ? colors.buttonPrimaryText
+                      : colors.textSecondary
+                  }
+                />
+                <Users
+                  size={14}
+                  color={
+                    formIsShared
+                      ? colors.buttonPrimaryText
+                      : '#818CF8'
+                  }
+                />
+                <Text
+                  style={[
+                    styles.segmentOptionText,
+                    formIsShared && styles.segmentOptionTextActive,
+                  ]}
+                >
+                  En Pareja (Compartido)
+                </Text>
+              </View>
             </Pressable>
           </View>
 
@@ -898,13 +926,21 @@ export function SavingsForecastSection({
                       }
                     />
                   )}
+                  {acc.isShared ? (
+                    <Users
+                      size={13}
+                      color={
+                        isSelected ? colors.buttonPrimaryText : '#818CF8'
+                      }
+                    />
+                  ) : null}
                   <Text
                     style={[
                       styles.accountSelectorChipName,
                       isSelected && styles.accountSelectorChipNameActive,
                     ]}
                   >
-                    {acc.isShared ? '👥 ' : ''}{acc.name}
+                    {acc.name}
                   </Text>
                   <View
                     style={[
@@ -1134,7 +1170,7 @@ export function SavingsForecastSection({
                       </View>
                       <Text style={styles.goalRemainingText}>
                         {activeForecast.finalBalance >= selectedAccount.targetAmount
-                          ? '🎉 ¡Meta cumplida en este horizonte!'
+                          ? '¡Meta cumplida en este horizonte!'
                           : `Faltan ${formatCLP(
                               selectedAccount.targetAmount -
                                 activeForecast.finalBalance
@@ -1728,6 +1764,8 @@ export function SavingsForecastSection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    alignSelf: 'stretch',
     gap: 18,
   },
   headerRow: {
@@ -2168,8 +2206,16 @@ const styles = StyleSheet.create({
   segmentOption: {
     flex: 1,
     paddingVertical: 9,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     borderRadius: radius.sm,
+  },
+  segmentOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
   },
   segmentOptionActive: {
     backgroundColor: colors.buttonPrimaryBg,

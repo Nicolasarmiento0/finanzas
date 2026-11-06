@@ -75,9 +75,12 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   pageStack: {
     width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
     gap: 20,
     paddingBottom: 32,
   },

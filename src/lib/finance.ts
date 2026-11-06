@@ -933,11 +933,19 @@ export function calculateProjectedPosition(
     }
   }
 
-  // Deudas en el periodo: tarjetas y préstamos
-  const targetCreditCardsDebt = creditCardAccounts.reduce(
-    (sum, card) => sum + (card.current_balance || 0),
-    0
-  );
+  // Deudas en el periodo: tarjetas (saldo base + cargos activos en targetPeriod) y préstamos
+  const targetCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
+    const cardCharges = recurringItems
+      .filter(
+        (item) =>
+          item.account_id === card.id &&
+          item.type === 'expense' &&
+          isItemActiveInMonth(item, targetPeriod)
+      )
+      .reduce((s, item) => s + item.amount, 0);
+    return sum + (card.current_balance || 0) + cardCharges;
+  }, 0);
+
   const targetLoansDebt = loanAccounts.reduce(
     (sum, a) => sum + (a.current_balance || 0),
     0
@@ -947,7 +955,18 @@ export function calculateProjectedPosition(
   const totalSavings = savingsState.reduce((sum, s) => sum + s.balance, 0);
   const netWorth = currentChecking + totalSavings - targetTotalDebt;
 
-  const baseTotalDebt = targetCreditCardsDebt + targetLoansDebt;
+  const baseCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
+    const cardCharges = recurringItems
+      .filter(
+        (item) =>
+          item.account_id === card.id &&
+          item.type === 'expense' &&
+          isItemActiveInMonth(item, basePeriod)
+      )
+      .reduce((s, item) => s + item.amount, 0);
+    return sum + (card.current_balance || 0) + cardCharges;
+  }, 0);
+  const baseTotalDebt = baseCreditCardsDebt + targetLoansDebt;
   const baseNetWorth = baseChecking + baseSavings - baseTotalDebt;
 
   return {

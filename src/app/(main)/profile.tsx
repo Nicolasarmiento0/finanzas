@@ -429,13 +429,17 @@ const styles = StyleSheet.create({
     paddingVertical: 48,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   pageStack: {
     width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
     gap: 20,
     paddingBottom: 32,
   },
   profileHeader: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
@@ -496,6 +500,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   sectionHeader: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 12,
@@ -542,6 +547,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   formGrid: {
+    width: '100%',
     flexDirection: 'row',
     gap: 12,
   },
@@ -550,11 +556,14 @@ const styles = StyleSheet.create({
   },
   formCol: {
     flex: 1,
+    width: '100%',
   },
   passwordFieldsStack: {
+    width: '100%',
     gap: 12,
   },
   errorBanner: {
+    width: '100%',
     marginTop: 14,
     padding: 12,
     borderRadius: radius.md,
@@ -568,6 +577,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   successBanner: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -585,11 +595,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   actionsRow: {
+    width: '100%',
     marginTop: 16,
     flexDirection: 'row',
     justifyContent: 'flex-end',
   },
   logoutRow: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -607,6 +619,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   userIdContainer: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

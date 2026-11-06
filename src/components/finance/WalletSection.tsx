@@ -745,6 +745,8 @@ export function WalletSection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    alignSelf: 'stretch',
     gap: 16,
   },
   headerRow: {

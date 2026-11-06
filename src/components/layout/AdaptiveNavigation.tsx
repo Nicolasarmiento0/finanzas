@@ -200,6 +200,8 @@ const styles = StyleSheet.create({
   // Desktop / Tablet (Tesla Console Sidebar)
   desktopRoot: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     flexDirection: 'row',
     backgroundColor: colors.background,
   },
@@ -301,15 +303,21 @@ const styles = StyleSheet.create({
   },
   desktopContent: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
 
   // Mobile (iOS Liquid Glass Floating Bottom Bar)
   mobileRoot: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: colors.background,
   },
   mobileContent: {
     flex: 1,
+    width: '100%',
+    height: '100%',
   },
   bottomBarContainer: {
     position: 'absolute',

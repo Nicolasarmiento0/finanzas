@@ -41,6 +41,7 @@ export function GlassInput({ label, style, ...props }: GlassInputProps) {
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
     marginBottom: 18,
   },
   label: {
@@ -52,6 +53,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   input: {
+    width: '100%',
     height: 52,
     borderRadius: radius.md,
     borderWidth: 1,

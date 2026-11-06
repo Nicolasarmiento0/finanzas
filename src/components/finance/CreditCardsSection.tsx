@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   AlertCircle,
+  Calendar,
   Check,
+  Clock,
   Layers,
   Pencil,
   Plus,
@@ -31,7 +33,10 @@ import { formatCLP } from '@/lib/currency';
 import {
   calculateCreditCardMetrics,
   formatPeriodFull,
+  formatPeriodShort,
+  getCategoryColor,
   isItemActiveInMonth,
+  shiftPeriod,
 } from '@/lib/finance';
 import { colors, radius } from '@/theme/tokens';
 
@@ -42,6 +47,26 @@ const SUGGESTED_NAMES = new Set([
   'Tarjeta de Crédito',
 ]);
 
+const INSTALLMENT_PRESETS = [
+  { label: '1 Mes (Contado)', months: 1 },
+  { label: '3 Cuotas', months: 3 },
+  { label: '6 Cuotas', months: 6 },
+  { label: '12 Cuotas', months: 12 },
+  { label: '24 Cuotas', months: 24 },
+  { label: 'Permanente', months: 0 },
+];
+
+const CARD_CHARGE_CATEGORIES = [
+  'suscripciones',
+  'tecnologia',
+  'transporte',
+  'salud',
+  'prestamo',
+  'servicios',
+  'fijo',
+  'general',
+];
+
 interface CreditCardsSectionProps {
   period: string;
   accounts: Account[];
@@ -50,6 +75,7 @@ interface CreditCardsSectionProps {
   onUpdateAccount?: (id: string, input: UpdateAccountInput) => Promise<void>;
   onDeleteAccount: (id: string) => Promise<void>;
   onCreateRecurringItem: (input: CreateRecurringItemInput) => Promise<void>;
+  onDeleteRecurringItem?: (id: string) => Promise<void>;
   onAddSubItem: (
     recurringItemId: string,
     input: { name: string; amount: number }
@@ -65,6 +91,7 @@ export function CreditCardsSection({
   onUpdateAccount,
   onDeleteAccount,
   onCreateRecurringItem,
+  onDeleteRecurringItem,
   onAddSubItem,
   onRemoveSubItem,
 }: CreditCardsSectionProps) {
@@ -89,12 +116,45 @@ export function CreditCardsSection({
   const [subAmount, setSubAmount] = useState('');
   const [submittingSub, setSubmittingSub] = useState(false);
 
-  // Estado para agregar un paquete/gasto matriz directamente a una tarjeta
+  // Estado para agregar un paquete/gasto matriz directamente a una tarjeta (con temporalidad y cuotas)
   const [activeCardForNewGroup, setActiveCardForNewGroup] = useState<
     string | null
   >(null);
   const [groupTitle, setGroupTitle] = useState('');
   const [groupAmount, setGroupAmount] = useState('');
+  const [groupCategory, setGroupCategory] = useState('suscripciones');
+  const [groupStartDate, setGroupStartDate] = useState(period);
+  const [groupEndDate, setGroupEndDate] = useState('');
+  const [groupInstallments, setGroupInstallments] = useState<number | null>(null);
+  const [submittingGroup, setSubmittingGroup] = useState(false);
+  const [groupErrorMsg, setGroupErrorMsg] = useState<string | null>(null);
+
+  const handleSelectPreset = (months: number) => {
+    setGroupInstallments(months);
+    const base = groupStartDate.trim() || period;
+    if (months === 0) {
+      setGroupEndDate('');
+    } else if (months === 1) {
+      setGroupEndDate(base);
+    } else {
+      setGroupEndDate(shiftPeriod(base, months - 1));
+    }
+  };
+
+  const toggleNewGroupForCard = (cardId: string) => {
+    if (activeCardForNewGroup === cardId) {
+      setActiveCardForNewGroup(null);
+    } else {
+      setActiveCardForNewGroup(cardId);
+      setGroupTitle('');
+      setGroupAmount('');
+      setGroupCategory('suscripciones');
+      setGroupStartDate(period);
+      setGroupEndDate('');
+      setGroupInstallments(null);
+      setGroupErrorMsg(null);
+    }
+  };
 
   const creditCards = accounts.filter((a) => a.type === 'credit_card');
   const otherAccounts = accounts.filter(
@@ -184,20 +244,36 @@ export function CreditCardsSection({
   };
 
   const handleCreateGroupOnCard = async (cardId: string) => {
-    if (!groupTitle.trim()) return;
+    if (!groupTitle.trim()) {
+      setGroupErrorMsg('Ingresa una glosa o título para el cargo.');
+      return;
+    }
     const amountNum = parseInt(groupAmount.replace(/\D/g, ''), 10) || 0;
-    await onCreateRecurringItem({
-      account_id: cardId,
-      title: groupTitle.trim(),
-      amount: amountNum,
-      type: 'expense',
-      category: 'tarjeta',
-      start_date: period,
-      is_active: true,
-    });
-    setGroupTitle('');
-    setGroupAmount('');
-    setActiveCardForNewGroup(null);
+    setSubmittingGroup(true);
+    setGroupErrorMsg(null);
+    try {
+      await onCreateRecurringItem({
+        account_id: cardId,
+        title: groupTitle.trim(),
+        amount: amountNum,
+        type: 'expense',
+        category: groupCategory.trim() || 'suscripciones',
+        start_date: groupStartDate.trim() || period,
+        end_date: groupEndDate.trim() ? groupEndDate.trim() : null,
+        is_active: true,
+      });
+      setGroupTitle('');
+      setGroupAmount('');
+      setGroupCategory('suscripciones');
+      setGroupStartDate(period);
+      setGroupEndDate('');
+      setGroupInstallments(null);
+      setActiveCardForNewGroup(null);
+    } catch (err: any) {
+      setGroupErrorMsg(err?.message || 'Error al guardar el cargo en la tarjeta');
+    } finally {
+      setSubmittingGroup(false);
+    }
   };
 
   return (
@@ -629,48 +705,192 @@ export function CreditCardsSection({
                 </View>
 
                 <Pressable
-                  onPress={() =>
-                    setActiveCardForNewGroup(
-                      activeCardForNewGroup === card.id ? null : card.id
-                    )
-                  }
+                  onPress={() => toggleNewGroupForCard(card.id)}
                   style={styles.smallGhostBtn}
                 >
                   <Plus size={13} color={colors.textPrimary} />
                   <Text style={styles.smallGhostBtnText}>
-                    Agregar Cargo / Paquete
+                    {activeCardForNewGroup === card.id ? 'Cerrar Formulario' : 'Agregar Cargo / Cuotas'}
                   </Text>
                 </Pressable>
               </View>
 
               {activeCardForNewGroup === card.id ? (
-                <View style={styles.inlineBox}>
-                  <Text style={styles.inlineBoxTitle}>
-                    Nuevo Cargo o Paquete Matriz en {card.name}
-                  </Text>
+                <View style={styles.cardExpenseFormBox}>
+                  <View style={styles.cardExpenseFormHeader}>
+                    <Text style={styles.inlineBoxTitle}>
+                      Nuevo Cargo o Cuota en {card.name}
+                    </Text>
+                    <Text style={styles.cardExpenseFormSubtitle}>
+                      Ingresa el monto, categoría y la vigencia temporal o número de cuotas
+                    </Text>
+                  </View>
+
+                  {/* Campos Principales: Glosa y Monto */}
                   <View style={[styles.twoCol, !isDesktop && styles.twoColMobile]}>
                     <View style={styles.col}>
                       <GlassInput
-                        label="Nombre (ej. Suscripciones Digitales)"
-                        placeholder="Ej. Suscripciones"
+                        label="Glosa / Compra (ej. Cuotas Celular, Netflix, Seguro)"
+                        placeholder="Ej. Cuotas Celular"
                         value={groupTitle}
                         onChangeText={setGroupTitle}
                       />
                     </View>
                     <View style={styles.col}>
                       <GlassInput
-                        label="Monto inicial CLP (0 si usarás sub-ítems)"
-                        placeholder="0"
+                        label="Monto Mensual CLP (0 si sumarás sub-ítems)"
+                        placeholder="Ej. 25000"
                         keyboardType="numeric"
                         value={groupAmount}
                         onChangeText={setGroupAmount}
                       />
                     </View>
                   </View>
-                  <TeslaButton
-                    title="Crear Cargo en Tarjeta"
-                    onPress={() => handleCreateGroupOnCard(card.id)}
-                  />
+
+                  {/* Categoría */}
+                  <View style={styles.formSectionGroup}>
+                    <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
+                    <View style={styles.chipsWrap}>
+                      {CARD_CHARGE_CATEGORIES.map((cat) => {
+                        const selected = groupCategory.toLowerCase() === cat;
+                        const catColor = getCategoryColor(cat);
+                        return (
+                          <Pressable
+                            key={cat}
+                            onPress={() => setGroupCategory(cat)}
+                            style={[
+                              styles.chip,
+                              selected && {
+                                borderColor: catColor,
+                                backgroundColor: `${catColor}24`,
+                              },
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.categoryChipDot,
+                                { backgroundColor: catColor },
+                              ]}
+                            />
+                            <Text
+                              style={[
+                                styles.chipText,
+                                selected && { color: catColor, fontWeight: '700' },
+                              ]}
+                            >
+                              {cat.toUpperCase()}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+
+                  {/* Plazo y Cuotas (¿Por cuánto tiempo?) */}
+                  <View style={styles.formSectionGroup}>
+                    <View style={styles.sectionTitleRowWithIcon}>
+                      <Clock size={13} color={colors.textSecondary} />
+                      <Text style={styles.fieldSectionLabel}>
+                        PLAZO Y CUOTAS (¿POR CUÁNTO TIEMPO?)
+                      </Text>
+                    </View>
+
+                    {/* Presets de Cuotas */}
+                    <View style={styles.chipsWrap}>
+                      {INSTALLMENT_PRESETS.map((preset) => {
+                        const isSelected = groupInstallments === preset.months;
+                        return (
+                          <Pressable
+                            key={preset.label}
+                            onPress={() => handleSelectPreset(preset.months)}
+                            style={[
+                              styles.chip,
+                              styles.installmentChip,
+                              isSelected && styles.installmentChipActive,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.chipText,
+                                isSelected && styles.chipTextActive,
+                              ]}
+                            >
+                              {preset.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    {/* Inputs de Mes Inicio y Mes Término */}
+                    <View
+                      style={[
+                        styles.twoCol,
+                        !isDesktop && styles.twoColMobile,
+                        { marginTop: 8 },
+                      ]}
+                    >
+                      <View style={styles.col}>
+                        <GlassInput
+                          label="Mes Inicio (YYYY-MM)"
+                          placeholder={period}
+                          value={groupStartDate}
+                          onChangeText={(text) => {
+                            setGroupStartDate(text);
+                            setGroupInstallments(null);
+                          }}
+                        />
+                      </View>
+                      <View style={styles.col}>
+                        <GlassInput
+                          label="Mes Término Opcional (YYYY-MM)"
+                          placeholder="Vacío = Permanente"
+                          value={groupEndDate}
+                          onChangeText={(text) => {
+                            setGroupEndDate(text);
+                            setGroupInstallments(null);
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Helper text de Vigencia */}
+                    <View style={styles.validityHelperBox}>
+                      <Text style={styles.validityHelperText}>
+                        {groupEndDate.trim()
+                          ? `Cargo activo desde ${formatPeriodFull(groupStartDate || period)} hasta ${formatPeriodFull(groupEndDate)}`
+                          : `Cargo recurrente continuo todos los meses a partir de ${formatPeriodFull(groupStartDate || period)}`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {groupErrorMsg ? (
+                    <Text style={styles.errorText}>{groupErrorMsg}</Text>
+                  ) : null}
+
+                  {/* Acciones del Formulario */}
+                  <View
+                    style={[
+                      styles.twoCol,
+                      !isDesktop && styles.twoColMobile,
+                      { marginTop: 8 },
+                    ]}
+                  >
+                    <View style={styles.col}>
+                      <TeslaButton
+                        title="Guardar Cargo en Tarjeta"
+                        onPress={() => handleCreateGroupOnCard(card.id)}
+                        loading={submittingGroup}
+                      />
+                    </View>
+                    <View style={styles.col}>
+                      <TeslaButton
+                        title="Cancelar"
+                        variant="secondary"
+                        onPress={() => setActiveCardForNewGroup(null)}
+                      />
+                    </View>
+                  </View>
                 </View>
               ) : null}
 
@@ -680,35 +900,82 @@ export function CreditCardsSection({
                 </Text>
               ) : (
                 <View style={styles.cardItemsStack}>
-                  {cardItems.map((item) => (
-                    <View key={item.id} style={styles.parentItemBox}>
-                      <View style={styles.parentItemHeader}>
-                        <View style={styles.parentItemInfoCol}>
-                          <Text style={styles.parentItemTitle}>{item.title}</Text>
-                          <Text style={styles.parentItemSubtitle}>
-                            {item.sub_items.length > 0
-                              ? `${item.sub_items.length} servicios anidados sumados automáticamente`
-                              : 'Cargo directo mensual'}
-                          </Text>
-                        </View>
+                  {cardItems.map((item) => {
+                    const endShort = formatPeriodShort(item.end_date);
+                    return (
+                      <View key={item.id} style={styles.parentItemBox}>
+                        <View style={styles.parentItemHeader}>
+                          <View style={styles.parentItemInfoCol}>
+                            <View style={styles.parentItemTitleRow}>
+                              <Text style={styles.parentItemTitle}>{item.title}</Text>
+                              <View
+                                style={[
+                                  styles.categoryMiniBadge,
+                                  {
+                                    backgroundColor: `${getCategoryColor(item.category || 'general')}20`,
+                                    borderColor: `${getCategoryColor(item.category || 'general')}50`,
+                                  },
+                                ]}
+                              >
+                                <View
+                                  style={[
+                                    styles.categoryMiniDot,
+                                    { backgroundColor: getCategoryColor(item.category || 'general') },
+                                  ]}
+                                />
+                                <Text
+                                  style={[
+                                    styles.categoryMiniText,
+                                    { color: getCategoryColor(item.category || 'general') },
+                                  ]}
+                                >
+                                  {(item.category || 'GENERAL').toUpperCase()}
+                                </Text>
+                              </View>
+                            </View>
 
-                        <View style={styles.parentItemRight}>
-                          <Text style={styles.parentItemAmount}>
-                            {formatCLP(item.amount)}
-                          </Text>
-                          <Pressable
-                            onPress={() =>
-                              setActiveParentForSub(
-                                activeParentForSub === item.id ? null : item.id
-                              )
-                            }
-                            style={styles.subAddTrigger}
-                          >
-                            <Plus size={12} color={colors.textPrimary} />
-                            <Text style={styles.subAddTriggerText}>Sub-ítem</Text>
-                          </Pressable>
+                            <View style={styles.parentItemMetaRow}>
+                              <Clock size={11} color={colors.textSecondary} />
+                              <Text style={styles.parentItemValidityText}>
+                                {endShort
+                                  ? `Hasta ${endShort} (${item.start_date ? `${formatPeriodShort(item.start_date)} → ` : ''}${endShort})`
+                                  : `Desde ${formatPeriodShort(item.start_date)} · Permanente`}
+                              </Text>
+                              {item.sub_items.length > 0 ? (
+                                <Text style={styles.parentItemSubtitle}>
+                                  · {item.sub_items.length} sub-servicios anidados
+                                </Text>
+                              ) : null}
+                            </View>
+                          </View>
+
+                          <View style={styles.parentItemRight}>
+                            <Text style={styles.parentItemAmount}>
+                              {formatCLP(item.amount)}
+                            </Text>
+                            <View style={styles.parentItemActionBtns}>
+                              <Pressable
+                                onPress={() =>
+                                  setActiveParentForSub(
+                                    activeParentForSub === item.id ? null : item.id
+                                  )
+                                }
+                                style={styles.subAddTrigger}
+                              >
+                                <Plus size={12} color={colors.textPrimary} />
+                                <Text style={styles.subAddTriggerText}>Sub-ítem</Text>
+                              </Pressable>
+                              {onDeleteRecurringItem ? (
+                                <Pressable
+                                  onPress={() => onDeleteRecurringItem(item.id)}
+                                  style={styles.deleteChargeTrigger}
+                                >
+                                  <Trash2 size={13} color={colors.textMuted} />
+                                </Pressable>
+                              ) : null}
+                            </View>
+                          </View>
                         </View>
-                      </View>
 
                       {/* Lista de Sub-ítems Anidados (ej. Apple + YouTube + SmartFit) */}
                       {item.sub_items.length > 0 ? (
@@ -766,8 +1033,9 @@ export function CreditCardsSection({
                         </View>
                       ) : null}
                     </View>
-                  ))}
-                </View>
+                  );
+                })}
+              </View>
               )}
             </GlassCard>
           );
@@ -813,6 +1081,8 @@ export function CreditCardsSection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    alignSelf: 'stretch',
     gap: 18,
   },
   headerRow: {
@@ -1387,6 +1657,143 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
+  },
+  cardExpenseFormBox: {
+    padding: 16,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorderFocused,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    marginBottom: 14,
+    gap: 14,
+  },
+  cardExpenseFormHeader: {
+    gap: 3,
+  },
+  cardExpenseFormSubtitle: {
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  formSectionGroup: {
+    gap: 8,
+  },
+  sectionTitleRowWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  fieldSectionLabel: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+  },
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.035)',
+  },
+  installmentChip: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+  },
+  installmentChipActive: {
+    backgroundColor: colors.buttonPrimaryBg,
+    borderColor: colors.buttonPrimaryBg,
+  },
+  categoryChipDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 999,
+  },
+  chipText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  chipTextActive: {
+    color: colors.buttonPrimaryText,
+    fontWeight: '700',
+  },
+  validityHelperBox: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    marginTop: 2,
+  },
+  validityHelperText: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  parentItemTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  categoryMiniBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  categoryMiniDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+  },
+  categoryMiniText: {
+    fontSize: 9.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  parentItemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 4,
+  },
+  parentItemValidityText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  parentItemActionBtns: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  deleteChargeTrigger: {
+    padding: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(244, 63, 94, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(244, 63, 94, 0.2)',
+  },
+  errorText: {
+    color: '#F43F5E',
+    fontSize: 12,
+    fontWeight: '500',
   },
   pressed: {
     opacity: 0.82,

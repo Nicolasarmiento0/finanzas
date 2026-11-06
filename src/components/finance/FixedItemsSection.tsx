@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
   Calendar,
@@ -28,6 +28,8 @@ import {
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
 import {
+  calculateCreditCardMetrics,
+  CreditCardMetrics,
   formatPeriodFull,
   formatPeriodShort,
   getCategoryColor,
@@ -130,30 +132,76 @@ export function FixedItemsSection({
   const activeIncomes = activeInMonth.filter((item) => item.type === 'income');
   const activeExpenses = activeInMonth.filter((item) => item.type === 'expense');
 
-  // Tarjetas de crédito activas con facturación o deuda en el periodo
+  // Tarjetas de crédito y cálculo dinámico de facturación mensual (base + cargos recurrentes)
   const creditCards = accounts.filter((a) => a.type === 'credit_card');
-  const activeCards = creditCards.filter((c) => (c.current_balance || 0) > 0);
-  const totalCardDebt = activeCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+  const creditCardIdSet = useMemo(
+    () => new Set(creditCards.map((c) => c.id)),
+    [creditCards]
+  );
+
+  const cardMetricsMap = useMemo(() => {
+    const map = new Map<
+      string,
+      { metrics: CreditCardMetrics; cardItems: RecurringItem[] }
+    >();
+    for (const card of creditCards) {
+      const cardItems = recurringItems.filter(
+        (item) =>
+          item.account_id === card.id &&
+          item.type === 'expense' &&
+          isItemActiveInMonth(item, period)
+      );
+      const metrics = calculateCreditCardMetrics(card, cardItems, period);
+      map.set(card.id, { metrics, cardItems });
+    }
+    return map;
+  }, [creditCards, recurringItems, period]);
+
+  // Tarjetas activas en el mes si tienen saldo base o cargos vigentes
+  const activeCards = creditCards.filter((c) => {
+    const data = cardMetricsMap.get(c.id);
+    return data ? data.metrics.usedAmount > 0 : (c.current_balance || 0) > 0;
+  });
+
+  const totalCardDebt = activeCards.reduce((sum, c) => {
+    const data = cardMetricsMap.get(c.id);
+    return sum + (data ? data.metrics.usedAmount : (c.current_balance || 0));
+  }, 0);
 
   const paidCards = activeCards.filter((c) => paidCardIdsInPeriod?.has(c.id));
-  const paidCardsAmount = paidCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+  const paidCardsAmount = paidCards.reduce((sum, c) => {
+    const data = cardMetricsMap.get(c.id);
+    return sum + (data ? data.metrics.usedAmount : (c.current_balance || 0));
+  }, 0);
+
+  // Gastos fijos directos (no cargados a tarjeta de crédito para evitar duplicación de cobro)
+  const standaloneExpenses = activeExpenses.filter(
+    (item) => !creditCardIdSet.has(item.account_id || '')
+  );
+  // Gastos fijos cargados a tarjetas de crédito (facturados en el estado de cuenta de la tarjeta)
+  const cardAssignedExpenses = activeExpenses.filter(
+    (item) => creditCardIdSet.has(item.account_id || '')
+  );
 
   const totalIncome = activeIncomes.reduce((sum, item) => sum + item.amount, 0);
-  const totalExpenses = activeExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const totalStandaloneExpenses = standaloneExpenses.reduce(
+    (sum, item) => sum + item.amount,
+    0
+  );
 
-  // Total consolidado de compromisos a pagar en el checklist (Gastos Fijos + Tarjetas de Crédito)
-  const totalMonthlyCommitments = totalExpenses + totalCardDebt;
+  // Total consolidado de compromisos a pagar en el checklist (Gastos Directos + Estados de Cuenta de Tarjetas)
+  const totalMonthlyCommitments = totalStandaloneExpenses + totalCardDebt;
 
-  const paidExpensesCount = activeExpenses.filter((item) =>
+  const paidExpensesCount = standaloneExpenses.filter((item) =>
     paidItemIdsInPeriod.has(item.id)
   ).length;
-  const paidExpensesAmount = activeExpenses
+  const paidExpensesAmount = standaloneExpenses
     .filter((item) => paidItemIdsInPeriod.has(item.id))
     .reduce((sum, item) => sum + item.amount, 0);
 
   const totalPaidAmount = paidExpensesAmount + paidCardsAmount;
   const pendingCommitmentsAmount = Math.max(0, totalMonthlyCommitments - totalPaidAmount);
-  const totalCommitmentsCount = activeExpenses.length + activeCards.length;
+  const totalCommitmentsCount = standaloneExpenses.length + activeCards.length;
   const totalPaidCount = paidExpensesCount + paidCards.length;
 
   // Cuentas corrientes para seguimiento del saldo bancario tras pagos
@@ -912,7 +960,7 @@ export function FixedItemsSection({
 
       {/* Lista Interactiva de Gastos Fijos y Tarjetas Vigentes en el Mes */}
       <GlassCard>
-        {activeExpenses.length === 0 && activeCards.length === 0 ? (
+        {standaloneExpenses.length === 0 && cardAssignedExpenses.length === 0 && activeCards.length === 0 ? (
           <Text style={styles.emptyText}>
             No hay gastos fijos ni compromisos de tarjetas para {formatPeriodFull(period)}.
           </Text>
@@ -934,6 +982,13 @@ export function FixedItemsSection({
                 : isFalabella
                 ? 'CMR Banco Falabella'
                 : 'Tarjeta de Crédito';
+
+              const cardData = cardMetricsMap.get(card.id);
+              const cardMetrics = cardData?.metrics;
+              const cardItems = cardData?.cardItems || [];
+              const billedAmount = cardMetrics ? cardMetrics.usedAmount : (card.current_balance || 0);
+              const baseBal = cardMetrics ? cardMetrics.baseBalance : (card.current_balance || 0);
+              const recurringTotal = cardMetrics ? cardMetrics.recurringCharges : 0;
 
               return (
                 <View key={`card-${card.id}`}>
@@ -991,6 +1046,25 @@ export function FixedItemsSection({
                         ESTADO DE CUENTA MENSUAL · VENCE DÍA {card.billing_day || 25}
                         {isPaid ? ' · PAGADO' : ' · PENDIENTE DE PAGO'}
                       </Text>
+
+                      {recurringTotal > 0 ? (
+                        <View style={styles.cardBreakdownBox}>
+                          <Text style={styles.cardBreakdownDetailText}>
+                            {baseBal > 0
+                              ? `Saldo base: ${formatCLP(baseBal)} + ${cardItems.length} cargo(s): ${formatCLP(recurringTotal)}`
+                              : `${cardItems.length} cargo(s) recurrente(s) facturado(s): ${formatCLP(recurringTotal)}`}
+                          </Text>
+                          <View style={styles.cardChargesChipRow}>
+                            {cardItems.map((cItem) => (
+                              <View key={cItem.id} style={styles.cardChargeMiniChip}>
+                                <Text style={styles.cardChargeMiniChipText} numberOfLines={1}>
+                                  {cItem.title}: {formatCLP(cItem.amount)}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
 
                     <View style={styles.itemRight}>
@@ -1000,7 +1074,7 @@ export function FixedItemsSection({
                           isPaid && styles.itemAmountPaid,
                         ]}
                       >
-                        {formatCLP(card.current_balance)}
+                        {formatCLP(billedAmount)}
                       </Text>
                       <View style={styles.cardPaymentStatusBadge}>
                         <Text
@@ -1021,12 +1095,12 @@ export function FixedItemsSection({
             })}
 
             {/* Separador entre Tarjetas y Gastos Fijos si ambos existen */}
-            {activeCards.length > 0 && activeExpenses.length > 0 ? (
+            {activeCards.length > 0 && standaloneExpenses.length > 0 ? (
               <View style={styles.itemDivider} />
             ) : null}
 
-            {/* 2. Gastos Fijos Recurrentes */}
-            {activeExpenses.map((item, idx) => {
+            {/* 2. Gastos Fijos Recurrentes Directos */}
+            {standaloneExpenses.map((item, idx) => {
               const isPaid = paidItemIdsInPeriod.has(item.id);
               const endShort = formatPeriodShort(item.end_date);
               const isEditing = editingItemId === item.id;
@@ -1158,6 +1232,148 @@ export function FixedItemsSection({
                 </View>
               );
             })}
+
+            {/* 3. Cargos Recurrentes en Tarjetas de Crédito (Detalle gestionable) */}
+            {cardAssignedExpenses.length > 0 ? (
+              <View style={styles.cardAssignedSection}>
+                <View style={styles.cardAssignedHeader}>
+                  <Text style={styles.cardAssignedHeaderTitle}>
+                    CARGOS VIGENTES EN TARJETAS ({cardAssignedExpenses.length})
+                  </Text>
+                  <Text style={styles.cardAssignedHeaderSub}>
+                    Consolidados y liquidados dentro del total facturado de tus tarjetas arriba
+                  </Text>
+                </View>
+
+                {cardAssignedExpenses.map((item, idx) => {
+                  const parentCard = creditCards.find((c) => c.id === item.account_id);
+                  const isEditing = editingItemId === item.id;
+                  const endShort = formatPeriodShort(item.end_date);
+                  const isCardPaid = Boolean(parentCard && paidCardIdsInPeriod?.has(parentCard.id));
+
+                  return (
+                    <View key={`card-exp-${item.id}`}>
+                      {idx > 0 ? <View style={styles.itemDivider} /> : null}
+                      <View style={styles.itemRow}>
+                        <View
+                          style={[
+                            styles.cardChargeIndicator,
+                            isCardPaid && styles.cardChargeIndicatorPaid,
+                          ]}
+                        >
+                          <CreditCard
+                            size={13}
+                            color={isCardPaid ? '#34D399' : '#818CF8'}
+                          />
+                        </View>
+
+                        <Pressable
+                          onPress={() => startEditingItem(item)}
+                          style={styles.itemInfo}
+                        >
+                          <View style={styles.itemTitleRow}>
+                            <Text
+                              style={[
+                                styles.itemTitle,
+                                isCardPaid && styles.itemTitlePaid,
+                              ]}
+                            >
+                              {item.title}
+                            </Text>
+                            {endShort ? (
+                              <View style={styles.validityBadge}>
+                                <Clock size={11} color={colors.textSecondary} />
+                                <Text style={styles.validityBadgeText}>
+                                  Hasta {endShort}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+
+                          <View style={styles.itemMetaRow}>
+                            <View
+                              style={[
+                                styles.categoryMiniBadge,
+                                {
+                                  backgroundColor: `${getCategoryColor(item.category)}18`,
+                                  borderColor: `${getCategoryColor(item.category)}45`,
+                                },
+                              ]}
+                            >
+                              <View
+                                style={[
+                                  styles.categoryMiniDot,
+                                  { backgroundColor: getCategoryColor(item.category) },
+                                ]}
+                              />
+                              <Text
+                                style={[
+                                  styles.categoryMiniBadgeText,
+                                  { color: getCategoryColor(item.category) },
+                                ]}
+                              >
+                                {item.category.toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={styles.itemMeta}>
+                              En {parentCard?.name || 'Tarjeta de Crédito'}
+                              {isCardPaid ? ' · PAGADO CON TARJETA' : ' · INCLUIDO EN FACTURACIÓN'}
+                            </Text>
+                          </View>
+
+                          {item.sub_items && item.sub_items.length > 0 ? (
+                            <View style={styles.subItemsInline}>
+                              {item.sub_items.map((sub) => (
+                                <Text key={sub.id} style={styles.subItemChip}>
+                                  {sub.name}: {formatCLP(sub.amount)}
+                                </Text>
+                              ))}
+                            </View>
+                          ) : null}
+                        </Pressable>
+
+                        <View style={styles.itemRight}>
+                          <Text
+                            style={[
+                              styles.itemAmount,
+                              isCardPaid && styles.itemAmountPaid,
+                            ]}
+                          >
+                            {formatCLP(item.amount)}
+                          </Text>
+                          <View style={styles.rowActions}>
+                            <Pressable
+                              onPress={() => startEditingItem(item)}
+                              style={[
+                                styles.actionIconBtn,
+                                isEditing && styles.actionIconBtnActive,
+                              ]}
+                            >
+                              <Pencil
+                                size={14}
+                                color={
+                                  isEditing
+                                    ? colors.buttonPrimaryText
+                                    : colors.textSecondary
+                                }
+                              />
+                            </Pressable>
+                            <Pressable
+                              onPress={() => onDeleteRecurringItem(item.id)}
+                              style={styles.actionIconBtn}
+                            >
+                              <Trash2 size={14} color={colors.textMuted} />
+                            </Pressable>
+                          </View>
+                        </View>
+                      </View>
+
+                      {renderEditPanel(item)}
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
         )}
       </GlassCard>
@@ -1297,6 +1513,8 @@ export function FixedItemsSection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    alignSelf: 'stretch',
     gap: 18,
   },
   periodCard: {
@@ -2019,6 +2237,68 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: '600',
+  },
+  cardBreakdownBox: {
+    marginTop: 6,
+    gap: 4,
+  },
+  cardBreakdownDetailText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  cardChargesChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 2,
+  },
+  cardChargeMiniChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  cardChargeMiniChipText: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  cardAssignedSection: {
+    marginTop: 18,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  cardAssignedHeader: {
+    marginBottom: 12,
+  },
+  cardAssignedHeaderTitle: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    letterSpacing: 0.6,
+  },
+  cardAssignedHeaderSub: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  cardChargeIndicator: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: 'rgba(129, 140, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(129, 140, 248, 0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardChargeIndicatorPaid: {
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderColor: 'rgba(52, 211, 153, 0.3)',
   },
   pressed: {
     opacity: 0.75,

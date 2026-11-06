@@ -483,6 +483,8 @@ export function ExecutiveSummarySection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
+    alignSelf: 'stretch',
     gap: 20,
   },
   sectionHeaderRow: {

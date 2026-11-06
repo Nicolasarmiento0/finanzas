@@ -797,6 +797,7 @@ export default function DashboardScreen() {
             onUpdateAccount={handleUpdateAccount}
             onDeleteAccount={handleDeleteAccount}
             onCreateRecurringItem={handleCreateRecurringItem}
+            onDeleteRecurringItem={handleDeleteRecurringItem}
             onAddSubItem={handleAddSubItem}
             onRemoveSubItem={handleRemoveSubItem}
           />
@@ -826,6 +827,8 @@ const styles = StyleSheet.create({
   },
   pageStack: {
     width: '100%',
+    alignSelf: 'stretch',
+    flexGrow: 1,
     gap: 20,
     paddingBottom: 32,
   },

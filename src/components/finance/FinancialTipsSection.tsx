@@ -623,9 +623,11 @@ export function FinancialTipsSection({
 const styles = StyleSheet.create({
   container: {
     width: '100%',
+    alignSelf: 'stretch',
     gap: 20,
   },
   headerRow: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -731,6 +733,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   sectionHeader: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -749,17 +752,20 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   insightsGrid: {
+    width: '100%',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 12,
   },
   insightsGridMobile: {
+    width: '100%',
     flexDirection: 'column',
     gap: 12,
   },
   insightCard: {
     flex: 1,
     minWidth: 260,
+    width: '100%',
     padding: 16,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -820,6 +826,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   filterHeader: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -833,10 +840,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   tipsList: {
+    width: '100%',
     marginTop: 16,
     gap: 14,
   },
   tipCard: {
+    width: '100%',
     padding: 16,
     borderRadius: radius.md,
     borderWidth: 1,
@@ -849,6 +858,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(52, 211, 153, 0.04)',
   },
   tipHeaderRow: {
+    width: '100%',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -950,6 +960,7 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   actionStepBox: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,

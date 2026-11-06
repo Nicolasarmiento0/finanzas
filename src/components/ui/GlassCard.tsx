@@ -27,6 +27,7 @@ export function GlassCard({ children, style, intensity = 30 }: GlassCardProps) {
 const styles = StyleSheet.create({
   outer: {
     width: '100%',
+    alignSelf: 'stretch',
     borderRadius: radius.lg,
     overflow: 'hidden',
     borderWidth: 1,
@@ -35,12 +36,14 @@ const styles = StyleSheet.create({
   },
   blur: {
     width: '100%',
+    alignSelf: 'stretch',
   },
   inner: {
     width: '100%',
     padding: 26,
   },
   innerMobile: {
+    width: '100%',
     padding: 16,
   },
 });
