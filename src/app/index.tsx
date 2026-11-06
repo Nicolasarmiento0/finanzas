@@ -10,7 +10,7 @@ export default function HomeScreen() {
   const router = useRouter();
 
   return (
-    <ScreenContainer>
+    <ScreenContainer maxWidth={440}>
       <GlassCard style={styles.card}>
         <View style={styles.badge}>
           <Text style={styles.badgeText}>PERSONAL FINANCE</Text>

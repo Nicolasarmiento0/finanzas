@@ -307,6 +307,7 @@ export function CreditCardsSection({
                       onPress={() => handleSelectBrand(option.id)}
                       style={[
                         styles.brandOptionCard,
+                        !isDesktop && styles.brandOptionCardMobile,
                         isSelected && styles.brandOptionCardSelected,
                       ]}
                     >
@@ -541,7 +542,12 @@ export function CreditCardsSection({
                       !isDesktop && styles.quotaGridMobile,
                     ]}
                   >
-                    <View style={styles.quotaPrimaryBox}>
+                    <View
+                      style={[
+                        styles.quotaPrimaryBox,
+                        !isDesktop && styles.quotaBoxMobile,
+                      ]}
+                    >
                       <Text style={styles.quotaLabel}>CUPO DISPONIBLE</Text>
                       <Text
                         style={[
@@ -557,7 +563,12 @@ export function CreditCardsSection({
                       </Text>
                     </View>
 
-                    <View style={styles.quotaSecondaryBox}>
+                    <View
+                      style={[
+                        styles.quotaSecondaryBox,
+                        !isDesktop && styles.quotaBoxMobile,
+                      ]}
+                    >
                       <Text style={styles.quotaLabel}>
                         MONTO FACTURADO / UTILIZADO
                       </Text>
@@ -910,6 +921,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     gap: 8,
   },
+  brandOptionCardMobile: {
+    flex: 0,
+    width: '100%',
+  },
   brandOptionCardSelected: {
     borderColor: colors.buttonPrimaryBg,
     backgroundColor: 'rgba(255, 255, 255, 0.09)',
@@ -1031,6 +1046,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     letterSpacing: -0.3,
+    lineHeight: 24,
   },
   brandTagPill: {
     paddingHorizontal: 8,
@@ -1048,6 +1064,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 1.1,
+    lineHeight: 14,
   },
   cardActionsRight: {
     flexDirection: 'row',
@@ -1103,28 +1120,47 @@ const styles = StyleSheet.create({
   },
   quotaGridMobile: {
     flexDirection: 'column',
+    gap: 10,
+  },
+  quotaBoxMobile: {
+    flex: 0,
+    width: '100%',
+    minHeight: 'auto',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
   },
   quotaPrimaryBox: {
     flex: 1,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorderFocused,
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    minHeight: 104,
+    gap: 4,
   },
   quotaSecondaryBox: {
     flex: 1,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    minHeight: 104,
+    gap: 4,
   },
   quotaLabel: {
     color: colors.textSecondary,
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 1.2,
+    lineHeight: 14,
     marginBottom: 4,
   },
   quotaAvailableValue: {
@@ -1132,20 +1168,25 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 30,
   },
   quotaUsedValue: {
     color: colors.textPrimary,
     fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 30,
   },
   quotaValueMobile: {
     fontSize: 21,
+    lineHeight: 27,
   },
   quotaFormulaHint: {
     color: colors.textSecondary,
     fontSize: 11,
+    lineHeight: 16,
     marginTop: 4,
+    flexShrink: 1,
   },
   progressSection: {
     gap: 6,

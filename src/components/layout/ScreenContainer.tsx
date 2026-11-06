@@ -7,7 +7,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResponsive } from '@/hooks/useResponsive';
 import { colors } from '@/theme/tokens';
 
@@ -21,10 +21,11 @@ interface ScreenContainerProps {
 export function ScreenContainer({
   children,
   centered = true,
-  maxWidth = 440,
+  maxWidth = 920,
   contentStyle,
 }: ScreenContainerProps) {
   const { isDesktop } = useResponsive();
+  const insets = useSafeAreaInsets();
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -39,7 +40,13 @@ export function ScreenContainer({
         <ScrollView
           contentContainerStyle={[
             styles.scrollContent,
-            !isDesktop && styles.scrollContentMobile,
+            !isDesktop && [
+              styles.scrollContentMobile,
+              {
+                paddingTop: Math.max(insets.top, 16),
+                paddingBottom: 100 + insets.bottom,
+              },
+            ],
             centered && styles.centeredContent,
           ]}
           keyboardShouldPersistTaps="handled"

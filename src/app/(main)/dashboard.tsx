@@ -431,7 +431,7 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer>
+      <ScreenContainer centered={false} maxWidth={920}>
         <View style={styles.loaderContainer}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -825,6 +825,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pageStack: {
+    width: '100%',
     gap: 20,
     paddingBottom: 32,
   },
@@ -987,15 +988,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -1,
     fontVariant: ['tabular-nums'],
+    lineHeight: 42,
   },
   balanceAmountMobile: {
     fontSize: 28,
+    lineHeight: 34,
   },
   balanceSubHint: {
     color: colors.textSecondary,
     fontSize: 12,
     marginTop: 4,
     fontVariant: ['tabular-nums'],
+    lineHeight: 18,
   },
   withoutSavingsRow: {
     flexDirection: 'row',
@@ -1012,11 +1016,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1,
+    lineHeight: 14,
   },
   withoutSavingsValue: {
     fontSize: 13,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 17,
   },
   withoutSavingsPos: {
     color: colors.textPrimary,
@@ -1038,17 +1044,20 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.2,
+    lineHeight: 14,
   },
   freeCashMiniValue: {
     color: '#34D399',
     fontSize: 22,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 28,
   },
   freeCashMiniSub: {
     color: colors.textSecondary,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
+    lineHeight: 16,
   },
   seedBanner: {
     width: '100%',

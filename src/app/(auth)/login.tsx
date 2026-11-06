@@ -37,7 +37,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer maxWidth={440}>
       <GlassCard>
         <Text style={styles.brand}>FinanzApp</Text>
         <Text style={styles.title}>Iniciar sesión</Text>

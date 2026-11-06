@@ -567,8 +567,8 @@ export function FixedItemsSection({
         <View style={styles.divider} />
 
         {/* Resumen Mensual: Ingresos vs Compromisos (Gastos + Tarjetas) y Superávit */}
-        <View style={styles.metricsGrid}>
-          <View style={styles.metricBox}>
+        <View style={[styles.metricsGrid, !isDesktop && styles.metricsGridMobile]}>
+          <View style={[styles.metricBox, !isDesktop && styles.metricBoxMobile]}>
             <Text style={styles.metricLabel}>INGRESOS FIJOS</Text>
             <Text style={styles.metricValue}>{formatCLP(totalIncome)}</Text>
             <Text style={styles.metricSub}>
@@ -577,7 +577,7 @@ export function FixedItemsSection({
             </Text>
           </View>
 
-          <View style={styles.metricBox}>
+          <View style={[styles.metricBox, !isDesktop && styles.metricBoxMobile]}>
             <Text style={styles.metricLabel}>GASTOS Y TARJETAS VIGENTES</Text>
             <Text style={styles.metricValue}>{formatCLP(totalMonthlyCommitments)}</Text>
             <Text style={styles.metricSub}>
@@ -586,7 +586,13 @@ export function FixedItemsSection({
             </Text>
           </View>
 
-          <View style={[styles.metricBox, styles.metricBoxHighlight]}>
+          <View
+            style={[
+              styles.metricBox,
+              styles.metricBoxHighlight,
+              !isDesktop && styles.metricBoxMobile,
+            ]}
+          >
             <Text style={styles.metricLabel}>FLUJO LIBRE MES</Text>
             <Text style={styles.metricValue}>{formatCLP(monthlySurplus)}</Text>
             <Text style={styles.metricSub}>
@@ -1355,14 +1361,27 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
+  metricsGridMobile: {
+    flexDirection: 'column',
+    gap: 10,
+  },
   metricBox: {
     flex: 1,
     minWidth: 140,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    gap: 4,
+  },
+  metricBoxMobile: {
+    flex: 0,
+    width: '100%',
+    minHeight: 'auto',
   },
   metricBoxHighlight: {
     borderColor: colors.glassBorderFocused,
@@ -1373,7 +1392,8 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 1.2,
-    marginBottom: 6,
+    lineHeight: 14,
+    marginBottom: 4,
   },
   metricValue: {
     color: colors.textPrimary,
@@ -1381,11 +1401,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.5,
     fontVariant: ['tabular-nums'],
+    lineHeight: 26,
   },
   metricSub: {
     color: colors.textSecondary,
     fontSize: 11,
-    marginTop: 6,
+    lineHeight: 16,
+    marginTop: 4,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1653,13 +1675,14 @@ const styles = StyleSheet.create({
   },
   dateRowMobile: {
     flexDirection: 'column',
-    gap: 0,
+    gap: 12,
   },
   submitButtonWrap: {
     marginTop: 8,
   },
   dateCol: {
     flex: 1,
+    width: '100%',
   },
   errorText: {
     color: colors.textPrimary,

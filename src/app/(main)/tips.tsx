@@ -49,7 +49,7 @@ export default function TipsScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer>
+      <ScreenContainer centered={false} maxWidth={920}>
         <View style={styles.loader}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -77,6 +77,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pageStack: {
+    width: '100%',
     gap: 20,
     paddingBottom: 32,
   },

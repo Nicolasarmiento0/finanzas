@@ -151,7 +151,7 @@ export function AdaptiveNavigation({ children }: AdaptiveNavigationProps) {
       <View
         style={[
           styles.bottomBarContainer,
-          { paddingBottom: Math.max(insets.bottom, 16) },
+          { paddingBottom: Math.max(insets.bottom, 12) },
         ]}
       >
         <View style={styles.bottomBarOuter}>
@@ -317,6 +317,7 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 0,
     alignItems: 'center',
+    zIndex: 100,
   },
   bottomBarOuter: {
     width: '100%',
@@ -341,17 +342,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     height: 44,
     borderRadius: radius.pill,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
   },
   bottomBarItemActive: {
     backgroundColor: colors.buttonPrimaryBg,
   },
   bottomBarText: {
     color: colors.textSecondary,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   bottomBarTextActive: {

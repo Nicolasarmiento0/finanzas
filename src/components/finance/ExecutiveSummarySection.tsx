@@ -200,7 +200,7 @@ export function ExecutiveSummarySection({
         </View>
 
         <View style={[styles.cashFlowGrid, isMobile && styles.cashFlowGridMobile]}>
-          <View style={styles.cashFlowBox}>
+          <View style={[styles.cashFlowBox, isMobile && styles.cashFlowBoxMobile]}>
             <View style={styles.cashFlowIconRow}>
               <ArrowUpRight size={15} color="#34D399" />
               <Text style={styles.cashFlowLabel}>INGRESOS FIJOS ACTIVOS</Text>
@@ -211,7 +211,7 @@ export function ExecutiveSummarySection({
             </Text>
           </View>
 
-          <View style={styles.cashFlowBox}>
+          <View style={[styles.cashFlowBox, isMobile && styles.cashFlowBoxMobile]}>
             <View style={styles.cashFlowIconRow}>
               <ArrowDownRight size={15} color={colors.textSecondary} />
               <Text style={styles.cashFlowLabel}>GASTOS FIJOS ACTIVOS</Text>
@@ -222,7 +222,13 @@ export function ExecutiveSummarySection({
             </Text>
           </View>
 
-          <View style={[styles.cashFlowBox, styles.cashFlowBoxHighlight]}>
+          <View
+            style={[
+              styles.cashFlowBox,
+              styles.cashFlowBoxHighlight,
+              isMobile && styles.cashFlowBoxMobile,
+            ]}
+          >
             <View style={styles.cashFlowIconRow}>
               <Sparkles size={15} color={colors.textPrimary} />
               <Text style={styles.cashFlowLabel}>FLUJO DE CAJA LIBRE</Text>
@@ -402,7 +408,7 @@ export function ExecutiveSummarySection({
 
         <View style={[styles.exportCardsGrid, isMobile && styles.exportCardsGridMobile]}>
           {/* Opción 1: Exportar Mes Actual */}
-          <View style={styles.exportOptionCard}>
+          <View style={[styles.exportOptionCard, isMobile && styles.exportOptionCardMobile]}>
             <View style={styles.exportOptionHeader}>
               <Download size={16} color={colors.textPrimary} />
               <Text style={styles.exportOptionTitle}>
@@ -420,7 +426,7 @@ export function ExecutiveSummarySection({
           </View>
 
           {/* Opción 2: Exportar Pronóstico de Ahorro */}
-          <View style={styles.exportOptionCard}>
+          <View style={[styles.exportOptionCard, isMobile && styles.exportOptionCardMobile]}>
             <View style={styles.exportOptionHeader}>
               <TrendingUp size={16} color="#34D399" />
               <Text style={styles.exportOptionTitle}>
@@ -902,14 +908,27 @@ const styles = StyleSheet.create({
   },
   cashFlowGridMobile: {
     flexDirection: 'column',
+    gap: 12,
   },
   cashFlowBox: {
     flex: 1,
-    padding: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    gap: 6,
+    minHeight: 104,
+  },
+  cashFlowBoxMobile: {
+    flex: 0,
+    width: '100%',
+    minHeight: 'auto',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     gap: 6,
   },
   cashFlowBoxHighlight: {
@@ -926,22 +945,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
+    lineHeight: 16,
   },
   cashFlowValue: {
     color: colors.textPrimary,
     fontSize: 22,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 28,
   },
   cashFlowValueLarge: {
     color: colors.textPrimary,
     fontSize: 24,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 30,
   },
   cashFlowSub: {
     color: colors.textSecondary,
     fontSize: 12,
+    lineHeight: 18,
+    flexShrink: 1,
   },
   ratioBarSection: {
     gap: 8,
@@ -1119,6 +1143,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
     gap: 12,
     justifyContent: 'space-between',
+  },
+  exportOptionCardMobile: {
+    flex: 0,
+    width: '100%',
+    minHeight: 'auto',
+    justifyContent: 'flex-start',
+    gap: 14,
   },
   exportOptionHeader: {
     flexDirection: 'row',

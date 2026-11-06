@@ -464,6 +464,7 @@ export function FinancialTipsSection({
                 key={item.id}
                 style={[
                   styles.insightCard,
+                  isMobile && styles.insightCardMobile,
                   item.tone === 'emerald' && styles.insightCardEmerald,
                 ]}
               >
@@ -621,6 +622,7 @@ export function FinancialTipsSection({
 
 const styles = StyleSheet.create({
   container: {
+    width: '100%',
     gap: 20,
   },
   headerRow: {
@@ -753,6 +755,7 @@ const styles = StyleSheet.create({
   },
   insightsGridMobile: {
     flexDirection: 'column',
+    gap: 12,
   },
   insightCard: {
     flex: 1,
@@ -762,7 +765,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    gap: 8,
+    gap: 10,
+  },
+  insightCardMobile: {
+    flex: 0,
+    width: '100%',
+    minWidth: '100%',
+    minHeight: 'auto',
   },
   insightCardEmerald: {
     borderColor: 'rgba(52, 211, 153, 0.35)',
@@ -773,12 +782,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 8,
+    flexWrap: 'wrap',
   },
   insightTitle: {
     color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '700',
     flex: 1,
+    minWidth: 160,
+    lineHeight: 20,
   },
   insightBadge: {
     paddingHorizontal: 8,
@@ -787,6 +799,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    alignSelf: 'flex-start',
   },
   insightBadgeEmerald: {
     borderColor: 'rgba(52, 211, 153, 0.4)',
@@ -803,7 +816,8 @@ const styles = StyleSheet.create({
   insightDetail: {
     color: colors.textSecondary,
     fontSize: 12,
-    lineHeight: 18,
+    lineHeight: 19,
+    flexShrink: 1,
   },
   filterHeader: {
     flexDirection: 'row',

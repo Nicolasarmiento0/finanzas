@@ -13,6 +13,7 @@ import {
   Coffee,
   Coins,
   DollarSign,
+  HandCoins,
   Landmark,
   Pencil,
   Plus,
@@ -51,6 +52,7 @@ const VARIABLE_QUICK_CATEGORIES = [
   { id: 'bebidas', label: 'Bebida / Café', icon: Coffee, color: '#F59E0B' },
   { id: 'transporte', label: 'Transporte / Uber', icon: Tag, color: '#38BDF8' },
   { id: 'entretenimiento', label: 'Ocio / Salidas', icon: Sparkles, color: '#EC4899' },
+  { id: 'prestamo', label: 'Préstamo / Deuda', icon: HandCoins, color: '#FB923C' },
   { id: 'general', label: 'Compras / Varios', icon: Receipt, color: '#94A3B8' },
 ];
 
@@ -328,7 +330,7 @@ export function WalletSection({
 
         {/* 3 Métricas Clave de Sueldo Libre & Gastos Variables */}
         <View style={[styles.metricsGrid, isMobile && styles.metricsGridMobile]}>
-          <View style={styles.metricBox}>
+          <View style={[styles.metricBox, isMobile && styles.metricBoxMobile]}>
             <View style={styles.metricIconRow}>
               <Coins size={14} color={colors.textSecondary} />
               <Text style={styles.metricLabel}>SUELDO LIBRE INICIAL</Text>
@@ -339,7 +341,7 @@ export function WalletSection({
             </Text>
           </View>
 
-          <View style={styles.metricBox}>
+          <View style={[styles.metricBox, isMobile && styles.metricBoxMobile]}>
             <View style={styles.metricIconRow}>
               <TrendingDown size={14} color="#F59E0B" />
               <Text style={styles.metricLabel}>GASTADO EN VARIABLES</Text>
@@ -353,7 +355,13 @@ export function WalletSection({
             </Text>
           </View>
 
-          <View style={[styles.metricBox, styles.metricBoxHighlight]}>
+          <View
+            style={[
+              styles.metricBox,
+              styles.metricBoxHighlight,
+              isMobile && styles.metricBoxMobile,
+            ]}
+          >
             <View style={styles.metricIconRow}>
               <Sparkles size={14} color="#34D399" />
               <Text style={styles.metricLabelEmerald}>DISPONIBLE RESTANTE HOY</Text>
@@ -433,7 +441,10 @@ export function WalletSection({
         ) : (
           <View style={styles.accountsGrid}>
             {checkingAccounts.map((acc) => (
-              <View key={acc.id} style={styles.accountCard}>
+              <View
+                key={acc.id}
+                style={[styles.accountCard, isMobile && styles.accountCardMobile]}
+              >
                 <View style={styles.accountCardHeader}>
                   <View style={styles.accountCardIconWrap}>
                     <Landmark size={15} color={colors.textPrimary} />
@@ -698,7 +709,9 @@ export function WalletSection({
                                 { color: catColor },
                               ]}
                             >
-                              {exp.category.toUpperCase()}
+                              {exp.category === 'prestamo'
+                                ? 'PRÉSTAMO'
+                                : exp.category.toUpperCase()}
                             </Text>
                           </View>
                           <Text style={styles.expenseDateText}>
@@ -803,15 +816,28 @@ const styles = StyleSheet.create({
   },
   metricsGridMobile: {
     flexDirection: 'column',
+    gap: 10,
   },
   metricBox: {
     flex: 1,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.025)',
-    gap: 4,
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    minHeight: 100,
+    gap: 6,
+  },
+  metricBoxMobile: {
+    flex: 0,
+    width: '100%',
+    minHeight: 'auto',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    gap: 6,
   },
   metricBoxHighlight: {
     borderColor: 'rgba(52, 211, 153, 0.4)',
@@ -827,12 +853,14 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
     letterSpacing: 0.8,
+    lineHeight: 15,
   },
   metricLabelEmerald: {
     color: '#34D399',
     fontSize: 10.5,
     fontWeight: '800',
     letterSpacing: 0.8,
+    lineHeight: 15,
   },
   metricValue: {
     color: colors.textPrimary,
@@ -840,6 +868,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.4,
+    lineHeight: 24,
   },
   metricValueEmerald: {
     color: '#34D399',
@@ -847,6 +876,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.4,
+    lineHeight: 26,
   },
   metricValueNegative: {
     color: '#F87171',
@@ -854,6 +884,8 @@ const styles = StyleSheet.create({
   metricSub: {
     color: colors.textSecondary,
     fontSize: 11,
+    lineHeight: 16,
+    flexShrink: 1,
   },
   budgetProgressSection: {
     marginTop: 14,
@@ -957,7 +989,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
+    minHeight: 100,
     gap: 6,
+  },
+  accountCardMobile: {
+    flex: 0,
+    width: '100%',
+    minWidth: '100%',
+    minHeight: 'auto',
   },
   accountCardHeader: {
     flexDirection: 'row',
@@ -976,6 +1017,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 13.5,
     fontWeight: '700',
+    lineHeight: 18,
     flex: 1,
   },
   accountCardBalance: {
@@ -984,6 +1026,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
+    lineHeight: 22,
   },
   accountCardActions: {
     flexDirection: 'row',
@@ -1178,6 +1221,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14.5,
     fontWeight: '600',
+    lineHeight: 19,
   },
   expenseMetaRow: {
     flexDirection: 'row',
@@ -1199,6 +1243,7 @@ const styles = StyleSheet.create({
   expenseDateText: {
     color: colors.textSecondary,
     fontSize: 11,
+    lineHeight: 15,
   },
   expenseRowRight: {
     flexDirection: 'row',
@@ -1210,6 +1255,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     fontVariant: ['tabular-nums'],
+    lineHeight: 20,
   },
   iconSmallBtn: {
     padding: 6,

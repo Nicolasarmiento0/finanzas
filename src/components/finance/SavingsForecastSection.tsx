@@ -2123,6 +2123,7 @@ const styles = StyleSheet.create({
   },
   col: {
     flex: 1,
+    width: '100%',
   },
   ratePresetsRow: {
     flexDirection: 'row',

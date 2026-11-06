@@ -43,7 +43,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer maxWidth={440}>
       <GlassCard>
         <Text style={styles.brand}>FinanzApp</Text>
         <Text style={styles.title}>Crear cuenta</Text>

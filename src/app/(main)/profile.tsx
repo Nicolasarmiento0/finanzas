@@ -176,7 +176,7 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer>
+      <ScreenContainer centered={false} maxWidth={920}>
         <View style={styles.loader}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -192,7 +192,7 @@ export default function ProfileScreen() {
     .join('');
 
   return (
-    <ScreenContainer centered={false} maxWidth={760}>
+    <ScreenContainer centered={false} maxWidth={920}>
       <View style={styles.pageStack}>
         {/* Tarjeta de Cabecera del Perfil */}
         <GlassCard>
@@ -431,6 +431,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pageStack: {
+    width: '100%',
     gap: 20,
     paddingBottom: 32,
   },
