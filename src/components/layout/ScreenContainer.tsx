@@ -16,6 +16,7 @@ interface ScreenContainerProps {
   centered?: boolean;
   maxWidth?: number;
   contentStyle?: ViewStyle;
+  scrollRef?: React.RefObject<ScrollView>;
 }
 
 export function ScreenContainer({
@@ -23,6 +24,7 @@ export function ScreenContainer({
   centered = true,
   maxWidth = 920,
   contentStyle,
+  scrollRef,
 }: ScreenContainerProps) {
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -38,6 +40,7 @@ export function ScreenContainer({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
+          ref={scrollRef}
           style={styles.scrollView}
           contentContainerStyle={[
             styles.scrollContent,

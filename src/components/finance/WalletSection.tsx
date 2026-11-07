@@ -36,6 +36,7 @@ import {
   CreateVariableExpenseInput,
   RecurringItem,
   UpdateAccountInput,
+  UpdateVariableExpenseInput,
   VariableExpense,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
@@ -66,6 +67,7 @@ interface WalletSectionProps {
   onUpdateAccount: (id: string, input: UpdateAccountInput) => Promise<void>;
   onDeleteAccount: (id: string) => Promise<void>;
   onCreateVariableExpense: (input: CreateVariableExpenseInput) => Promise<void>;
+  onUpdateVariableExpense?: (id: string, input: UpdateVariableExpenseInput) => Promise<void>;
   onDeleteVariableExpense: (id: string) => Promise<void>;
 }
 
@@ -79,6 +81,7 @@ export function WalletSection({
   onUpdateAccount,
   onDeleteAccount,
   onCreateVariableExpense,
+  onUpdateVariableExpense,
   onDeleteVariableExpense,
 }: WalletSectionProps) {
   const { isDesktop, isMobile } = useResponsive();
@@ -99,6 +102,16 @@ export function WalletSection({
   const [deductFromBalance, setDeductFromBalance] = useState(true);
   const [submittingExpense, setSubmittingExpense] = useState(false);
   const [expenseError, setExpenseError] = useState<string | null>(null);
+
+  // Estado Edición de Gasto Variable
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editExpenseTitle, setEditExpenseTitle] = useState('');
+  const [editExpenseAmount, setEditExpenseAmount] = useState('');
+  const [editExpenseCategory, setEditExpenseCategory] = useState('alimentacion');
+  const [editExpenseDate, setEditExpenseDate] = useState('');
+  const [editExpenseAccountId, setEditExpenseAccountId] = useState<string | null>(null);
+  const [savingEditExpense, setSavingEditExpense] = useState(false);
+  const [editExpenseError, setEditExpenseError] = useState<string | null>(null);
 
   // Cuentas Corrientes y Débito
   const checkingAccounts = useMemo(
@@ -277,6 +290,57 @@ export function WalletSection({
       );
     } finally {
       setSubmittingExpense(false);
+    }
+  };
+
+  const openEditExpense = (exp: VariableExpense) => {
+    setEditingExpenseId(exp.id);
+    setEditExpenseTitle(exp.title);
+    setEditExpenseAmount(String(exp.amount));
+    setEditExpenseCategory(exp.category || 'alimentacion');
+    setEditExpenseDate(exp.date || '');
+    setEditExpenseAccountId(exp.account_id || null);
+    setEditExpenseError(null);
+  };
+
+  const closeEditExpense = () => {
+    setEditingExpenseId(null);
+    setEditExpenseTitle('');
+    setEditExpenseAmount('');
+    setEditExpenseError(null);
+  };
+
+  const handleSaveEditExpense = async () => {
+    if (!editingExpenseId) return;
+    setEditExpenseError(null);
+    const amountNum = Math.round(Number(editExpenseAmount.replace(/\D/g, '') || 0));
+    if (!editExpenseTitle.trim()) {
+      setEditExpenseError('Ingresa una descripción para el gasto');
+      return;
+    }
+    if (amountNum <= 0) {
+      setEditExpenseError('Ingresa un monto válido mayor a 0');
+      return;
+    }
+
+    setSavingEditExpense(true);
+    try {
+      if (onUpdateVariableExpense) {
+        await onUpdateVariableExpense(editingExpenseId, {
+          title: editExpenseTitle.trim(),
+          amount: amountNum,
+          category: editExpenseCategory,
+          date: editExpenseDate.trim() || undefined,
+          account_id: editExpenseAccountId || null,
+        });
+      }
+      closeEditExpense();
+    } catch (err) {
+      setEditExpenseError(
+        err instanceof Error ? err.message : 'Error al actualizar el gasto'
+      );
+    } finally {
+      setSavingEditExpense(false);
     }
   };
 
@@ -683,56 +747,192 @@ export function WalletSection({
               return (
                 <View key={exp.id}>
                   {idx > 0 ? <View style={styles.itemDivider} /> : null}
-                  <View style={styles.expenseRow}>
-                    <View style={styles.expenseRowLeft}>
-                      <View
-                        style={[
-                          styles.expenseCategoryDot,
-                          { backgroundColor: catColor },
-                        ]}
+                  {editingExpenseId === exp.id ? (
+                    <View style={styles.inlineEditExpenseBox}>
+                      <View style={styles.inlineEditHeader}>
+                        <View style={styles.inlineEditHeaderLeft}>
+                          <Pencil size={14} color="#34D399" />
+                          <Text style={styles.inlineEditTitle}>Editar Gasto Variable</Text>
+                        </View>
+                        <Pressable onPress={closeEditExpense} style={styles.inlineEditCloseBtn}>
+                          <X size={14} color={colors.textSecondary} />
+                        </Pressable>
+                      </View>
+
+                      {editExpenseError ? (
+                        <Text style={styles.errorText}>{editExpenseError}</Text>
+                      ) : null}
+
+                      <GlassInput
+                        label="Descripción / Título"
+                        placeholder="Ej. Almuerzo o Supermercado"
+                        value={editExpenseTitle}
+                        onChangeText={setEditExpenseTitle}
                       />
-                      <View style={styles.expenseInfoCol}>
-                        <Text style={styles.expenseTitle}>{exp.title}</Text>
-                        <View style={styles.expenseMetaRow}>
-                          <View
-                            style={[
-                              styles.categoryMiniBadge,
-                              {
-                                backgroundColor: `${catColor}18`,
-                                borderColor: `${catColor}45`,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.categoryMiniBadgeText,
-                                { color: catColor },
-                              ]}
-                            >
-                              {exp.category === 'prestamo'
-                                ? 'PRÉSTAMO'
-                                : exp.category.toUpperCase()}
-                            </Text>
-                          </View>
-                          <Text style={styles.expenseDateText}>
-                            {exp.date} · {exp.account_name || 'Cuenta'}
-                          </Text>
+
+                      <GlassInput
+                        label="Monto CLP"
+                        placeholder="Ej. 12000"
+                        keyboardType="numeric"
+                        value={editExpenseAmount}
+                        onChangeText={setEditExpenseAmount}
+                      />
+
+                      <GlassInput
+                        label="Fecha (YYYY-MM-DD)"
+                        placeholder="2026-11-06"
+                        value={editExpenseDate}
+                        onChangeText={setEditExpenseDate}
+                      />
+
+                      <View style={styles.formSectionGroup}>
+                        <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
+                        <View style={styles.chipsWrap}>
+                          {VARIABLE_QUICK_CATEGORIES.map((cat) => {
+                            const isSelected = editExpenseCategory === cat.id;
+                            const IconComponent = cat.icon;
+                            return (
+                              <Pressable
+                                key={cat.id}
+                                onPress={() => setEditExpenseCategory(cat.id)}
+                                style={[
+                                  styles.chip,
+                                  isSelected && {
+                                    borderColor: cat.color,
+                                    backgroundColor: `${cat.color}22`,
+                                  },
+                                ]}
+                              >
+                                <IconComponent
+                                  size={13}
+                                  color={isSelected ? cat.color : colors.textSecondary}
+                                />
+                                <Text
+                                  style={[
+                                    styles.chipText,
+                                    isSelected && { color: cat.color, fontWeight: '700' },
+                                  ]}
+                                >
+                                  {cat.label}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
                         </View>
                       </View>
-                    </View>
 
-                    <View style={styles.expenseRowRight}>
-                      <Text style={styles.expenseAmountText}>
-                        -{formatCLP(exp.amount)}
-                      </Text>
-                      <Pressable
-                        onPress={() => onDeleteVariableExpense(exp.id)}
-                        style={styles.iconSmallBtn}
-                      >
-                        <Trash2 size={13} color={colors.textMuted} />
-                      </Pressable>
+                      {checkingAccounts.length > 0 ? (
+                        <View style={styles.formSectionGroup}>
+                          <Text style={styles.fieldSectionLabel}>CUENTA ASOCIADA</Text>
+                          <View style={styles.chipsWrap}>
+                            {checkingAccounts.map((acc) => {
+                              const isSelected = editExpenseAccountId === acc.id;
+                              return (
+                                <Pressable
+                                  key={acc.id}
+                                  onPress={() => setEditExpenseAccountId(acc.id)}
+                                  style={[
+                                    styles.chip,
+                                    isSelected && styles.chipActive,
+                                  ]}
+                                >
+                                  <Wallet
+                                    size={13}
+                                    color={
+                                      isSelected
+                                        ? colors.buttonPrimaryText
+                                        : colors.textSecondary
+                                    }
+                                  />
+                                  <Text
+                                    style={[
+                                      styles.chipText,
+                                      isSelected && styles.chipTextActive,
+                                    ]}
+                                  >
+                                    {acc.name}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ) : null}
+
+                      <View style={styles.inlineEditActions}>
+                        <TeslaButton
+                          title="Cancelar"
+                          variant="secondary"
+                          onPress={closeEditExpense}
+                          style={styles.inlineEditBtn}
+                        />
+                        <TeslaButton
+                          title={savingEditExpense ? 'Guardando...' : 'Guardar Cambios'}
+                          variant="primary"
+                          loading={savingEditExpense}
+                          onPress={handleSaveEditExpense}
+                          style={styles.inlineEditBtn}
+                        />
+                      </View>
                     </View>
-                  </View>
+                  ) : (
+                    <View style={styles.expenseRow}>
+                      <View style={styles.expenseRowLeft}>
+                        <View
+                          style={[
+                            styles.expenseCategoryDot,
+                            { backgroundColor: catColor },
+                          ]}
+                        />
+                        <View style={styles.expenseInfoCol}>
+                          <Text style={styles.expenseTitle}>{exp.title}</Text>
+                          <View style={styles.expenseMetaRow}>
+                            <View
+                              style={[
+                                styles.categoryMiniBadge,
+                                {
+                                  backgroundColor: `${catColor}18`,
+                                  borderColor: `${catColor}45`,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.categoryMiniBadgeText,
+                                  { color: catColor },
+                                ]}
+                              >
+                                {exp.category === 'prestamo'
+                                  ? 'PRÉSTAMO'
+                                  : exp.category.toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={styles.expenseDateText}>
+                              {exp.date} · {exp.account_name || 'Cuenta'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+
+                      <View style={styles.expenseRowRight}>
+                        <Text style={styles.expenseAmountText}>
+                          -{formatCLP(exp.amount)}
+                        </Text>
+                        <Pressable
+                          onPress={() => openEditExpense(exp)}
+                          style={styles.iconSmallBtn}
+                        >
+                          <Pencil size={13} color={colors.textSecondary} />
+                        </Pressable>
+                        <Pressable
+                          onPress={() => onDeleteVariableExpense(exp.id)}
+                          style={styles.iconSmallBtn}
+                        >
+                          <Trash2 size={13} color={colors.textMuted} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  )}
                 </View>
               );
             })}
@@ -1261,6 +1461,45 @@ const styles = StyleSheet.create({
   },
   iconSmallBtn: {
     padding: 6,
+  },
+  inlineEditExpenseBox: {
+    width: '100%',
+    padding: 16,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    gap: 12,
+    marginVertical: 4,
+  },
+  inlineEditHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  inlineEditHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  inlineEditTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  inlineEditCloseBtn: {
+    padding: 4,
+  },
+  inlineEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 8,
+  },
+  inlineEditBtn: {
+    minWidth: 120,
+    height: 44,
   },
   pressed: {
     opacity: 0.7,

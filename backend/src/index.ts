@@ -1401,6 +1401,66 @@ app.post('/variable-expenses', async (c) => {
   return c.json({ expense: created }, 201);
 });
 
+app.put('/variable-expenses/:id', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  const id = c.req.param('id');
+  const existing = await c.env.DB.prepare(
+    `SELECT * FROM variable_expenses WHERE id = ? AND user_id = ?`
+  )
+    .bind(id, user.id)
+    .first<VariableExpenseRow>();
+
+  if (!existing) {
+    return c.json({ error: 'Gasto variable no encontrado' }, 404);
+  }
+
+  const body = await c.req.json<{
+    title?: string;
+    amount?: number;
+    category?: string;
+    period?: string;
+    date?: string;
+    account_id?: string | null;
+    notes?: string | null;
+  }>();
+
+  const title = body.title !== undefined ? body.title.trim() : existing.title;
+  const amount = body.amount !== undefined ? Number(body.amount) : existing.amount;
+
+  if (!title || !Number.isFinite(amount) || amount <= 0) {
+    return c.json({ error: 'Título y monto mayor a 0 son obligatorios' }, 400);
+  }
+
+  const dateStr = body.date !== undefined ? (body.date.trim() || existing.date) : existing.date;
+  const periodStr = body.period !== undefined ? (body.period.trim() || dateStr.slice(0, 7)) : (dateStr ? dateStr.slice(0, 7) : existing.period);
+  const categoryStr = body.category !== undefined ? body.category.trim().toLowerCase() : existing.category;
+  const accountId = body.account_id !== undefined ? (body.account_id ? body.account_id.trim() : null) : existing.account_id;
+  const notesStr = body.notes !== undefined ? (body.notes ? body.notes.trim() : null) : existing.notes;
+
+  await c.env.DB.prepare(
+    `UPDATE variable_expenses
+     SET title = ?, amount = ?, category = ?, period = ?, date = ?, account_id = ?, notes = ?
+     WHERE id = ? AND user_id = ?`
+  )
+    .bind(title, Math.round(amount), categoryStr, periodStr, dateStr, accountId, notesStr, id, user.id)
+    .run();
+
+  const updated = await c.env.DB.prepare(
+    `SELECT v.*, a.name AS account_name
+     FROM variable_expenses v
+     LEFT JOIN accounts a ON a.id = v.account_id
+     WHERE v.id = ?`
+  )
+    .bind(id)
+    .first<VariableExpenseRow>();
+
+  return c.json({ expense: updated });
+});
+
 app.delete('/variable-expenses/:id', async (c) => {
   const user = await getAuthenticatedUser(c);
   if (!user) {

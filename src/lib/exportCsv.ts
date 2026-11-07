@@ -1,12 +1,14 @@
 import { Platform, Share } from 'react-native';
-import { Account, RecurringItem } from './api';
+import { Account, RecurringItem, VariableExpense } from './api';
 import {
   accountToSavingsAccount,
   buildMonthlySurplusList,
   calculateConsolidatedForecast,
   calculateForecast,
+  DEBT_TITLE_KEYWORDS,
   ForecastResponse,
   isItemActiveInMonth,
+  isNonCardDebtItem,
 } from './finance';
 
 function escapeCsvCell(value: string | number | boolean | null | undefined): string {
@@ -51,6 +53,7 @@ export interface MonthlyExportParams {
   accounts: Account[];
   recurringItems: RecurringItem[];
   paidItemIdsInPeriod: Set<string>;
+  variableExpenses?: VariableExpense[];
 }
 
 /**
@@ -62,6 +65,7 @@ export async function exportMonthlyReportToCsv({
   accounts,
   recurringItems,
   paidItemIdsInPeriod,
+  variableExpenses = [],
 }: MonthlyExportParams): Promise<string> {
   const activeItems = recurringItems.filter((item) => isItemActiveInMonth(item, period));
   const incomes = activeItems.filter((item) => item.type === 'income');
@@ -80,21 +84,42 @@ export async function exportMonthlyReportToCsv({
     .filter((a) => a.type === 'savings' && !a.is_shared)
     .reduce((sum, a) => sum + a.current_balance, 0);
 
-  // Deuda total: saldo utilizado en tarjetas de crédito + préstamos
-  const creditCardsDebt = accounts
-    .filter((a) => a.type === 'credit_card')
-    .reduce((sum, card) => {
-      const cardCharges = expenses
-        .filter((e) => e.account_id === card.id)
-        .reduce((s, e) => s + e.amount, 0);
-      return sum + card.current_balance + cardCharges;
-    }, 0);
+  const creditCardAccounts = accounts.filter((a) => a.type === 'credit_card');
+  const loanAccounts = accounts.filter((a) => a.type === 'loan');
+  const creditCardAccountIds = new Set(creditCardAccounts.map((c) => c.id));
+  const loanAccountIds = new Set(loanAccounts.map((l) => l.id));
 
-  const loansDebt = accounts
-    .filter((a) => a.type === 'loan')
-    .reduce((sum, a) => sum + a.current_balance, 0);
+  // 1. Deuda de Tarjetas de Crédito
+  const creditCardsDebt = creditCardAccounts.reduce((sum, card) => {
+    const cardCharges = expenses
+      .filter((e) => e.account_id === card.id)
+      .reduce((s, e) => s + e.amount, 0);
+    return sum + card.current_balance + cardCharges;
+  }, 0);
 
-  const totalDebt = creditCardsDebt + loansDebt;
+  // 2. Deuda en cuentas tipo Préstamo
+  const loansDebt = loanAccounts.reduce((sum, a) => sum + a.current_balance, 0);
+
+  // 3. Deuda en compromisos fijos de préstamo o crédito fuera de tarjeta
+  const fixedLoansDebt = expenses
+    .filter((item) => isNonCardDebtItem(item, creditCardAccountIds, loanAccountIds))
+    .reduce((s, item) => s + item.amount, 0);
+
+  // 4. Deuda en gastos variables del mes
+  const variableDebts = variableExpenses
+    .filter((exp) => {
+      const expPeriod = exp.period || exp.date?.slice(0, 7);
+      if (expPeriod !== period) return false;
+      const cat = (exp.category || '').toLowerCase().trim();
+      const title = (exp.title || '').toLowerCase();
+      return (
+        cat === 'prestamo' ||
+        DEBT_TITLE_KEYWORDS.some((kw) => title.includes(kw))
+      );
+    })
+    .reduce((s, exp) => s + exp.amount, 0);
+
+  const totalDebt = creditCardsDebt + loansDebt + fixedLoansDebt + variableDebts;
   const netWorth = checkingTotal + savingsTotal - totalDebt;
 
   // Agrupación de gastos por categoría
@@ -111,7 +136,11 @@ export async function exportMonthlyReportToCsv({
     ['1. RESUMEN PATRIMONIAL Y FLUJO DE CAJA', 'MONTO (CLP)'],
     ['Liquidez en Cuentas Corrientes', checkingTotal],
     ['Capital en Cuentas de Ahorro', savingsTotal],
-    ['Deuda Total (Tarjetas + Préstamos)', totalDebt],
+    ['Deuda en Tarjetas de Crédito', creditCardsDebt],
+    ['Deuda en Préstamos & Créditos Fijos', fixedLoansDebt],
+    ['Deuda en Cuentas Préstamo', loansDebt],
+    ['Deuda en Gastos Variables', variableDebts],
+    ['DEUDAS TOTALES CONSOLIDADAS', totalDebt],
     ['PATRIMONIO NETO CONSOLIDADO', netWorth],
     ['Ingresos Fijos del Mes', totalIncome],
     ['Gastos Fijos Activos del Mes', totalExpense],

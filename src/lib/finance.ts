@@ -1,4 +1,4 @@
-import { Account, CreateAccountInput, RecurringItem } from './api';
+import { Account, CreateAccountInput, RecurringItem, VariableExpense } from './api';
 
 const MONTH_NAMES_FULL = [
   'Enero',
@@ -797,6 +797,8 @@ export interface ProjectedPosition {
   savingsBalance: number;
   creditCardsDebt: number;
   loansDebt: number;
+  fixedLoansDebt: number;
+  variableLoansDebt: number;
   totalDebt: number;
   netWorth: number;
   baseNetWorth: number;
@@ -809,12 +811,63 @@ export interface ProjectedPosition {
   deltaMonths: number;
 }
 
+export const DEBT_TITLE_KEYWORDS = [
+  'prestamo',
+  'préstamo',
+  'crédito',
+  'credito',
+  'cuota',
+  'hipotecario',
+  'automotriz',
+  'vehicular',
+  'cae',
+  'financiamiento',
+  'deuda',
+];
+
+export function isNonCardDebtItem(
+  item: {
+    category?: string;
+    title?: string;
+    account_id?: string | null;
+  },
+  creditCardAccountIds: Set<string>,
+  loanAccountIds: Set<string>
+): boolean {
+  // Si está vinculado a una tarjeta de crédito, ya se computa en targetCreditCardsDebt
+  if (item.account_id && creditCardAccountIds.has(item.account_id)) {
+    return false;
+  }
+
+  // Si está vinculado a una cuenta de tipo préstamo
+  if (item.account_id && loanAccountIds.has(item.account_id)) {
+    return true;
+  }
+
+  // Si su categoría es préstamo
+  const cat = (item.category || '').toLowerCase().trim();
+  if (cat === 'prestamo') {
+    return true;
+  }
+
+  // Si el título contiene palabras clave de deuda, cuota o crédito
+  const title = (item.title || '').toLowerCase();
+  if (DEBT_TITLE_KEYWORDS.some((kw) => title.includes(kw))) {
+    return true;
+  }
+
+  return false;
+}
+
 export function calculateProjectedPosition(
   basePeriod: string,
   targetPeriod: string,
   accounts: Account[],
   recurringItems: RecurringItem[],
-  options?: { applyTenPercentSurplusRule?: boolean }
+  options?: {
+    applyTenPercentSurplusRule?: boolean;
+    variableExpenses?: VariableExpense[];
+  }
 ): ProjectedPosition {
   const checkingAccounts = accounts.filter((a) => a.type === 'checking');
   const personalSavingsAccounts = accounts.filter(
@@ -933,7 +986,10 @@ export function calculateProjectedPosition(
     }
   }
 
-  // Deudas en el periodo: tarjetas (saldo base + cargos activos en targetPeriod) y préstamos
+  const creditCardAccountIds = new Set(creditCardAccounts.map((c) => c.id));
+  const loanAccountIds = new Set(loanAccounts.map((l) => l.id));
+
+  // 1. Deuda de Tarjetas de Crédito: saldo base + cargos activos en targetPeriod
   const targetCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
     const cardCharges = recurringItems
       .filter(
@@ -946,15 +1002,43 @@ export function calculateProjectedPosition(
     return sum + (card.current_balance || 0) + cardCharges;
   }, 0);
 
+  // 2. Deuda de Cuentas tipo Préstamo
   const targetLoansDebt = loanAccounts.reduce(
     (sum, a) => sum + (a.current_balance || 0),
     0
   );
-  const targetTotalDebt = targetCreditCardsDebt + targetLoansDebt;
+
+  // 3. Deuda de Gastos Fijos de Préstamo / Crédito fuera de tarjetas
+  const targetFixedLoansDebt = recurringItems
+    .filter(
+      (item) =>
+        item.type === 'expense' &&
+        isItemActiveInMonth(item, targetPeriod) &&
+        isNonCardDebtItem(item, creditCardAccountIds, loanAccountIds)
+    )
+    .reduce((s, item) => s + item.amount, 0);
+
+  // 4. Deuda en Gastos Variables del periodo (ej. categoría 'prestamo' o título de crédito)
+  const targetVariableDebts = (options?.variableExpenses || [])
+    .filter((exp) => {
+      const expPeriod = exp.period || exp.date?.slice(0, 7);
+      if (expPeriod !== targetPeriod) return false;
+      const cat = (exp.category || '').toLowerCase().trim();
+      const title = (exp.title || '').toLowerCase();
+      return (
+        cat === 'prestamo' ||
+        DEBT_TITLE_KEYWORDS.some((kw) => title.includes(kw))
+      );
+    })
+    .reduce((s, exp) => s + exp.amount, 0);
+
+  const targetTotalDebt =
+    targetCreditCardsDebt + targetLoansDebt + targetFixedLoansDebt + targetVariableDebts;
 
   const totalSavings = savingsState.reduce((sum, s) => sum + s.balance, 0);
   const netWorth = currentChecking + totalSavings - targetTotalDebt;
 
+  // Cálculo en basePeriod para diffFromCurrentNetWorth
   const baseCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
     const cardCharges = recurringItems
       .filter(
@@ -966,7 +1050,31 @@ export function calculateProjectedPosition(
       .reduce((s, item) => s + item.amount, 0);
     return sum + (card.current_balance || 0) + cardCharges;
   }, 0);
-  const baseTotalDebt = baseCreditCardsDebt + targetLoansDebt;
+
+  const baseFixedLoansDebt = recurringItems
+    .filter(
+      (item) =>
+        item.type === 'expense' &&
+        isItemActiveInMonth(item, basePeriod) &&
+        isNonCardDebtItem(item, creditCardAccountIds, loanAccountIds)
+    )
+    .reduce((s, item) => s + item.amount, 0);
+
+  const baseVariableDebts = (options?.variableExpenses || [])
+    .filter((exp) => {
+      const expPeriod = exp.period || exp.date?.slice(0, 7);
+      if (expPeriod !== basePeriod) return false;
+      const cat = (exp.category || '').toLowerCase().trim();
+      const title = (exp.title || '').toLowerCase();
+      return (
+        cat === 'prestamo' ||
+        DEBT_TITLE_KEYWORDS.some((kw) => title.includes(kw))
+      );
+    })
+    .reduce((s, exp) => s + exp.amount, 0);
+
+  const baseTotalDebt =
+    baseCreditCardsDebt + targetLoansDebt + baseFixedLoansDebt + baseVariableDebts;
   const baseNetWorth = baseChecking + baseSavings - baseTotalDebt;
 
   return {
@@ -974,6 +1082,8 @@ export function calculateProjectedPosition(
     savingsBalance: totalSavings,
     creditCardsDebt: targetCreditCardsDebt,
     loansDebt: targetLoansDebt,
+    fixedLoansDebt: targetFixedLoansDebt,
+    variableLoansDebt: targetVariableDebts,
     totalDebt: targetTotalDebt,
     netWorth,
     baseNetWorth,

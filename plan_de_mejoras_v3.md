@@ -18,10 +18,10 @@
 ## 📋 Índice de Etapas de Implementación
 
 - [x] [**Etapa 1:** Categoría de "Alimentación" en Gastos de Tarjeta de Crédito](#etapa-1-categoría-de-alimentación-en-gastos-de-tarjeta-de-crédito) — **COMPLETADA**
-- [ ] [**Etapa 2:** Edición Completa de Gastos Variables Diarios (Backend + Frontend)](#etapa-2-edición-completa-de-gastos-variables-diarios-backend--frontend)
-- [ ] [**Etapa 3:** Motor de Inteligencia Financiera Profesional (El Algoritmo Estrella de FinanzApp)](#etapa-3-motor-de-inteligencia-financiera-profesional-el-algoritmo-estrella-de-finanzapp)
-- [ ] [**Etapa 4:** Integración en la Interfaz (Consejos y Mini-Diagnóstico en Dashboard)](#etapa-4-integración-en-la-interfaz-consejos-y-mini-diagnóstico-en-dashboard)
-- [ ] [**Etapa 5:** Verificación, Auditoría Universal y Despliegue](#etapa-5-verificación-auditoría-universal-y-despliegue)
+- [x] [**Etapa 2:** Edición Completa de Gastos Variables Diarios y de Tarjetas de Crédito (Backend + Frontend)](#etapa-2-edición-completa-de-gastos-variables-diarios-y-de-tarjetas-de-crédito-backend--frontend) — **COMPLETADA**
+- [x] [**Etapa 3:** Motor de Inteligencia Financiera Profesional (El Algoritmo Estrella de FinanzApp)](#etapa-3-motor-de-inteligencia-financiera-profesional-el-algoritmo-estrella-de-finanzapp) — **COMPLETADA**
+- [x] [**Etapa 4:** Integración en la Interfaz (Consejos y Mini-Diagnóstico en Dashboard)](#etapa-4-integración-en-la-interfaz-consejos-y-mini-diagnóstico-en-dashboard) — **COMPLETADA**
+- [x] [**Etapa 5:** Verificación, Auditoría Universal y Despliegue](#etapa-5-verificación-auditoría-universal-y-despliegue) — **COMPLETADA**
 
 ---
 
@@ -181,7 +181,7 @@ Transformar la sección de **Consejos & Diagnóstico** en el diferenciador de ma
 | # | Capacidad / Tarea | Complejidad | Impacto | Estado |
 |---|---|:---:|:---:|:---:|
 | 1 | Categoría "Alimentación" en Tarjetas de Crédito | Baja | Alto | Completada |
-| 2 | Edición de Gastos Variables (Backend PUT + UI Modal) | Media | Muy Alto | Pendiente |
-| 3 | Motor Analítico Integral (FinanzAI Intelligence) | Media-Alta | Excepcional | Pendiente |
-| 4 | UI de Diagnóstico Cuantitativo y Mini-Insight en Dashboard | Media | Muy Alto | Pendiente |
-| 5 | Validación de Build, TypeScript y Despliegue | Baja | Crítico | Pendiente |
+| 2 | Edición de Gastos Variables y Tarjetas (Backend PUT + UI Animada) | Media | Muy Alto | Completada |
+| 3 | Motor Analítico Integral (FinanzAI Intelligence - 12 Correlaciones) | Media-Alta | Excepcional | Completada |
+| 4 | UI de Diagnóstico Cuantitativo y Mini-Insight en Dashboard | Media | Muy Alto | Completada |
+| 5 | Consolidación Total de Deudas y Validación Universal | Baja | Crítico | Completada |

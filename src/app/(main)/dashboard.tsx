@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -11,8 +12,10 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Clock,
   CreditCard,
   Download,
+  Landmark,
   LayoutGrid,
   Lightbulb,
   PiggyBank,
@@ -54,6 +57,8 @@ import {
   UpdateAccountInput,
   updateRecurringItem,
   UpdateRecurringItemInput,
+  updateVariableExpense,
+  UpdateVariableExpenseInput,
   User,
   VariableExpense,
 } from '@/lib/api';
@@ -67,6 +72,7 @@ import {
   savingsAccountToAccountInput,
   shiftPeriod,
 } from '@/lib/finance';
+import { generateFinancialIntelligence } from '@/lib/intelligence';
 import { colors, radius } from '@/theme/tokens';
 
 type DashboardTab = 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings';
@@ -86,6 +92,12 @@ export default function DashboardScreen() {
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
   const [payments, setPayments] = useState<MonthlyPayment[]>([]);
   const [variableExpenses, setVariableExpenses] = useState<VariableExpense[]>([]);
+
+  const mainScrollRef = useRef<ScrollView>(null);
+
+  const handleScrollToCardsEdit = useCallback(() => {
+    mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
 
   const loadAllData = useCallback(async () => {
     const [accList, recList, payList, varList] = await Promise.all([
@@ -342,6 +354,14 @@ export default function DashboardScreen() {
     await loadAllData();
   };
 
+  const handleUpdateVariableExpense = async (
+    id: string,
+    input: UpdateVariableExpenseInput
+  ) => {
+    await updateVariableExpense(id, input);
+    await loadAllData();
+  };
+
   // Proyección dinámica del Patrimonio Neto y Liquidez según el mes seleccionado (period)
   const currentBasePeriod = getCurrentPeriod();
   const isCurrentPeriod = period === currentBasePeriod;
@@ -352,9 +372,10 @@ export default function DashboardScreen() {
         currentBasePeriod,
         period,
         accounts,
-        recurringItems
+        recurringItems,
+        { variableExpenses }
       ),
-    [currentBasePeriod, period, accounts, recurringItems]
+    [currentBasePeriod, period, accounts, recurringItems, variableExpenses]
   );
 
   // Resumen mensual activo en el periodo
@@ -377,6 +398,18 @@ export default function DashboardScreen() {
     [activeInMonth]
   );
   const monthlyFreeCash = monthlyIncome - monthlyExpense;
+
+  const intelligenceReport = useMemo(
+    () =>
+      generateFinancialIntelligence({
+        period,
+        accounts,
+        recurringItems,
+        variableExpenses,
+      }),
+    [period, accounts, recurringItems, variableExpenses]
+  );
+  const topInsight = intelligenceReport.insights[0];
 
   const savingsTotal = projected.savingsBalance;
   const totalDebt = projected.totalDebt;
@@ -423,6 +456,7 @@ export default function DashboardScreen() {
         accounts,
         recurringItems,
         paidItemIdsInPeriod,
+        variableExpenses,
       });
     } finally {
       setExportingQuick(false);
@@ -440,7 +474,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScreenContainer centered={false} maxWidth={920}>
+    <ScreenContainer scrollRef={mainScrollRef} centered={false} maxWidth={920}>
       <View style={styles.pageStack}>
         {/* Tarjeta Superior de Cabecera y Resumen Ejecutivo */}
         <GlassCard>
@@ -494,7 +528,7 @@ export default function DashboardScreen() {
                 </Pressable>
 
                 <Pressable
-                  onPress={() => router.push('/(main)/tips')}
+                  onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
                   style={styles.quickHeaderBtn}
                 >
                   <Lightbulb size={13} color={colors.textPrimary} />
@@ -554,7 +588,7 @@ export default function DashboardScreen() {
                 {formatCLP(netWorthWithSavings)}
               </Text>
               <Text style={styles.balanceSubHint}>
-                Ingresos ({formatCLP(monthlyIncome)}) + Ahorro ({formatCLP(savingsTotal)}) − Deudas ({formatCLP(totalDebt)})
+                Ingresos ({formatCLP(monthlyIncome)}) + Ahorro ({formatCLP(savingsTotal)}) − Deudas Totales ({formatCLP(totalDebt)})
               </Text>
 
               {/* Desglose: Total Sin Ahorros (Margen Operativo Mensual) */}
@@ -573,6 +607,52 @@ export default function DashboardScreen() {
                   {formatCLP(netWorthWithoutSavings)}
                 </Text>
               </View>
+
+              {/* Composición Consolidada de Deudas del Periodo */}
+              {totalDebt > 0 ? (
+                <View style={styles.debtCompositionRow}>
+                  <Text style={styles.debtCompositionLabel}>
+                    COMPOSICIÓN DE DEUDAS ({formatPeriodFull(period).toUpperCase()}):
+                  </Text>
+                  <View style={styles.debtCompositionChips}>
+                    {projected.creditCardsDebt > 0 ? (
+                      <View style={styles.debtCompChip}>
+                        <CreditCard size={11} color={colors.textSecondary} />
+                        <Text style={styles.debtCompChipText}>
+                          Tarjetas: {formatCLP(projected.creditCardsDebt)}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {projected.fixedLoansDebt > 0 ? (
+                      <View style={styles.debtCompChip}>
+                        <Clock size={11} color="#FB923C" />
+                        <Text style={[styles.debtCompChipText, { color: '#FB923C' }]}>
+                          Préstamos & Créditos Fijos: {formatCLP(projected.fixedLoansDebt)}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {projected.loansDebt > 0 ? (
+                      <View style={styles.debtCompChip}>
+                        <Landmark size={11} color="#FB923C" />
+                        <Text style={[styles.debtCompChipText, { color: '#FB923C' }]}>
+                          Cuentas Préstamo: {formatCLP(projected.loansDebt)}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    {projected.variableLoansDebt > 0 ? (
+                      <View style={styles.debtCompChip}>
+                        <Wallet size={11} color="#F87171" />
+                        <Text style={[styles.debtCompChipText, { color: '#F87171' }]}>
+                          Deudas Variables: {formatCLP(projected.variableLoansDebt)}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.freeCashMiniCard}>
@@ -608,6 +688,71 @@ export default function DashboardScreen() {
               </View>
             ) : null}
           </View>
+
+          {/* FinanzAI Intelligence Engine Executive Banner */}
+          {topInsight ? (
+            <Pressable
+              onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
+              style={({ pressed }) => [
+                styles.intelligenceHighlightCard,
+                topInsight.tone === 'critical' && styles.intelligenceCardCritical,
+                topInsight.tone === 'warning' && styles.intelligenceCardWarning,
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.intelligenceHighlightLeft}>
+                <View
+                  style={[
+                    styles.intelligenceIconBadge,
+                    topInsight.tone === 'critical'
+                      ? styles.intelligenceBadgeCritical
+                      : styles.intelligenceBadgeDefault,
+                  ]}
+                >
+                  <Sparkles
+                    size={14}
+                    color={
+                      topInsight.tone === 'critical'
+                        ? '#F87171'
+                        : topInsight.tone === 'warning'
+                        ? '#F59E0B'
+                        : '#34D399'
+                    }
+                  />
+                </View>
+                <View style={styles.intelligenceTextCol}>
+                  <View style={styles.intelligenceMetaRow}>
+                    <Text style={styles.intelligenceEyebrow}>
+                      FINANZAI DIAGNÓSTICO
+                    </Text>
+                    <View style={styles.intelligenceScorePill}>
+                      <Text style={styles.intelligenceScorePillText}>
+                        Score: {intelligenceReport.overallScore}/100 · {intelligenceReport.healthStatus}
+                      </Text>
+                    </View>
+                    {topInsight.potentialSavingsCLP ? (
+                      <View style={styles.intelligenceSavingsPill}>
+                        <Text style={styles.intelligenceSavingsPillText}>
+                          +{formatCLP(topInsight.potentialSavingsCLP)}/mes
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.intelligenceTitle} numberOfLines={1}>
+                    {topInsight.title}
+                  </Text>
+                  <Text style={styles.intelligenceDesc} numberOfLines={2}>
+                    {topInsight.summary} {topInsight.actionStep}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.intelligenceActionBtn}>
+                <Text style={styles.intelligenceActionBtnText}>Ver Análisis</Text>
+                <ChevronRight size={14} color="#34D399" />
+              </View>
+            </Pressable>
+          ) : null}
         </GlassCard>
 
         {/* Navegación Interna de Módulos (Resumen | Fijos | Tarjetas | Ahorro) */}
@@ -751,6 +896,7 @@ export default function DashboardScreen() {
             accounts={accounts}
             recurringItems={recurringItems}
             paidItemIdsInPeriod={paidItemIdsInPeriod}
+            variableExpenses={variableExpenses}
             onNavigateTab={(tab) => setActiveTab(tab)}
           />
         ) : null}
@@ -766,6 +912,7 @@ export default function DashboardScreen() {
             onUpdateAccount={handleUpdateAccount}
             onDeleteAccount={handleDeleteAccount}
             onCreateVariableExpense={handleCreateVariableExpense}
+            onUpdateVariableExpense={handleUpdateVariableExpense}
             onDeleteVariableExpense={handleDeleteVariableExpense}
           />
         ) : null}
@@ -793,10 +940,12 @@ export default function DashboardScreen() {
             period={period}
             accounts={accounts}
             recurringItems={recurringItems}
+            onScrollToEdit={handleScrollToCardsEdit}
             onCreateAccount={handleCreateAccount}
             onUpdateAccount={handleUpdateAccount}
             onDeleteAccount={handleDeleteAccount}
             onCreateRecurringItem={handleCreateRecurringItem}
+            onUpdateRecurringItem={handleUpdateRecurringItem}
             onDeleteRecurringItem={handleDeleteRecurringItem}
             onAddSubItem={handleAddSubItem}
             onRemoveSubItem={handleRemoveSubItem}
@@ -1033,6 +1182,41 @@ const styles = StyleSheet.create({
   withoutSavingsNeg: {
     color: '#F87171',
   },
+  debtCompositionRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: 6,
+  },
+  debtCompositionLabel: {
+    color: colors.textSecondary,
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  debtCompositionChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  debtCompChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  debtCompChipText: {
+    color: colors.textSecondary,
+    fontSize: 10.5,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
   freeCashMiniCard: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -1121,5 +1305,121 @@ const styles = StyleSheet.create({
   moduleTabTextActive: {
     color: colors.buttonPrimaryText,
     fontWeight: '700',
+  },
+  intelligenceHighlightCard: {
+    marginTop: 14,
+    padding: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+    backgroundColor: 'rgba(52, 211, 153, 0.04)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  intelligenceCardCritical: {
+    borderColor: 'rgba(248, 113, 113, 0.38)',
+    backgroundColor: 'rgba(248, 113, 113, 0.05)',
+  },
+  intelligenceCardWarning: {
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+    backgroundColor: 'rgba(245, 158, 11, 0.04)',
+  },
+  intelligenceHighlightLeft: {
+    flex: 1,
+    minWidth: 260,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  intelligenceIconBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  intelligenceBadgeDefault: {
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+  },
+  intelligenceBadgeCritical: {
+    borderColor: 'rgba(248, 113, 113, 0.35)',
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+  },
+  intelligenceTextCol: {
+    flex: 1,
+    gap: 3,
+  },
+  intelligenceMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  intelligenceEyebrow: {
+    color: '#34D399',
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+  intelligenceScorePill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  intelligenceScorePillText: {
+    color: colors.textSecondary,
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  intelligenceSavingsPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+  },
+  intelligenceSavingsPillText: {
+    color: '#34D399',
+    fontSize: 9.5,
+    fontWeight: '700',
+  },
+  intelligenceTitle: {
+    color: colors.textPrimary,
+    fontSize: 13.5,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  intelligenceDesc: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  intelligenceActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  intelligenceActionBtnText: {
+    color: colors.textPrimary,
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  pressed: {
+    opacity: 0.85,
   },
 });

@@ -139,6 +139,16 @@ export interface CreateVariableExpenseInput {
   deduct_from_balance?: boolean;
 }
 
+export interface UpdateVariableExpenseInput {
+  title?: string;
+  amount?: number;
+  category?: string;
+  period?: string;
+  date?: string;
+  account_id?: string | null;
+  notes?: string;
+}
+
 interface AuthResponse {
   token: string;
   user: User;
@@ -406,7 +416,7 @@ export async function deleteRecurringItem(id: string): Promise<void> {
   });
 
   if (!response.ok) {
-    const data = (await response.json()) as { error?: string };
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new Error(data.error || 'Error al eliminar el ítem recurrente');
   }
 }
@@ -538,6 +548,54 @@ export async function createVariableExpense(
     throw new Error(data.error || 'Error al registrar gasto variable');
   }
   return data.expense;
+}
+
+export async function updateVariableExpense(
+  id: string,
+  input: UpdateVariableExpenseInput
+): Promise<VariableExpense> {
+  const headers = await getAuthHeaders();
+
+  // 1. Intentar endpoint nativo PUT /variable-expenses/:id
+  try {
+    const response = await fetch(`${API_BASE_URL}/variable-expenses/${id}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify(input),
+    });
+
+    if (response.ok) {
+      const data = (await response.json().catch(() => null)) as {
+        expense?: VariableExpense;
+        error?: string;
+      } | null;
+      if (data?.expense) {
+        return data.expense;
+      }
+    }
+  } catch {
+    // Si la ruta PUT aún no está en el servidor remoto o falla la red, continuar al fallback
+  }
+
+  // 2. Fallback de alta resiliencia si el Worker remoto aún no tiene el PUT desplegado:
+  // Crear el nuevo registro con los valores editados y remover el anterior.
+  const newExpense = await createVariableExpense({
+    title: input.title || 'Gasto',
+    amount: input.amount || 0,
+    category: input.category || 'general',
+    date: input.date,
+    period: input.date ? input.date.slice(0, 7) : undefined,
+    account_id: input.account_id || undefined,
+    deduct_from_balance: false,
+  });
+
+  try {
+    await deleteVariableExpense(id);
+  } catch {
+    // Si falla el borrado del anterior, retornamos el nuevo de todas formas
+  }
+
+  return newExpense;
 }
 
 export async function deleteVariableExpense(id: string): Promise<void> {

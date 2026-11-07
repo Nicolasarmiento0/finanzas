@@ -33,6 +33,7 @@ import {
   CreateAccountInput,
   RecurringItem,
   UpdateAccountInput,
+  VariableExpense,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
 import {
@@ -56,6 +57,7 @@ interface ExecutiveSummarySectionProps {
   accounts: Account[];
   recurringItems: RecurringItem[];
   paidItemIdsInPeriod: Set<string>;
+  variableExpenses?: VariableExpense[];
   onNavigateTab: (tab: 'wallet' | 'fixed' | 'cards' | 'savings') => void;
 }
 
@@ -65,6 +67,7 @@ export function ExecutiveSummarySection({
   accounts,
   recurringItems,
   paidItemIdsInPeriod,
+  variableExpenses,
   onNavigateTab,
 }: ExecutiveSummarySectionProps) {
   const { isMobile } = useResponsive();
@@ -157,6 +160,7 @@ export function ExecutiveSummarySection({
         accounts,
         recurringItems,
         paidItemIdsInPeriod,
+        variableExpenses,
       });
       setExportStatus(`Reporte mensual exportado: ${filename}`);
     } finally {

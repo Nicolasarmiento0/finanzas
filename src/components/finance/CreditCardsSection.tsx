@@ -1,7 +1,15 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import {
+  Animated,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {
   AlertCircle,
+  ArrowUp,
   Calendar,
   Check,
   Clock,
@@ -28,6 +36,7 @@ import {
   CreateRecurringItemInput,
   RecurringItem,
   UpdateAccountInput,
+  UpdateRecurringItemInput,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
 import {
@@ -80,10 +89,12 @@ interface CreditCardsSectionProps {
   period: string;
   accounts: Account[];
   recurringItems: RecurringItem[];
+  onScrollToEdit?: () => void;
   onCreateAccount: (input: CreateAccountInput) => Promise<void>;
   onUpdateAccount?: (id: string, input: UpdateAccountInput) => Promise<void>;
   onDeleteAccount: (id: string) => Promise<void>;
   onCreateRecurringItem: (input: CreateRecurringItemInput) => Promise<void>;
+  onUpdateRecurringItem?: (id: string, input: UpdateRecurringItemInput) => Promise<void>;
   onDeleteRecurringItem?: (id: string) => Promise<void>;
   onAddSubItem: (
     recurringItemId: string,
@@ -96,15 +107,35 @@ export function CreditCardsSection({
   period,
   accounts,
   recurringItems,
+  onScrollToEdit,
   onCreateAccount,
   onUpdateAccount,
   onDeleteAccount,
   onCreateRecurringItem,
+  onUpdateRecurringItem,
   onDeleteRecurringItem,
   onAddSubItem,
   onRemoveSubItem,
 }: CreditCardsSectionProps) {
   const { isDesktop } = useResponsive();
+
+  // Referencias y animación para desplazamiento al módulo de edición
+  const editFormRef = useRef<View>(null);
+  const editHighlightAnim = useRef(new Animated.Value(0)).current;
+
+  const scrollToEditForm = useCallback(() => {
+    onScrollToEdit?.();
+    setTimeout(() => {
+      if (Platform.OS === 'web') {
+        const el = editFormRef.current as unknown as HTMLElement | null;
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else if (typeof window !== 'undefined') {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }
+    }, 80);
+  }, [onScrollToEdit]);
 
   // Estado para Crear o Editar Tarjeta / Cuenta
   const [showNewCardModal, setShowNewCardModal] = useState(false);
@@ -165,6 +196,78 @@ export function CreditCardsSection({
     }
   };
 
+  // Estado para editar un cargo en tarjeta
+  const [editingChargeId, setEditingChargeId] = useState<string | null>(null);
+  const [editChargeTitle, setEditChargeTitle] = useState('');
+  const [editChargeAmount, setEditChargeAmount] = useState('');
+  const [editChargeCategory, setEditChargeCategory] = useState('suscripciones');
+  const [editChargeStartDate, setEditChargeStartDate] = useState(period);
+  const [editChargeEndDate, setEditChargeEndDate] = useState('');
+  const [editChargeInstallments, setEditChargeInstallments] = useState<number | null>(null);
+  const [savingEditCharge, setSavingEditCharge] = useState(false);
+  const [editChargeError, setEditChargeError] = useState<string | null>(null);
+
+  const openEditCharge = (item: RecurringItem) => {
+    setEditingChargeId(item.id);
+    setEditChargeTitle(item.title);
+    setEditChargeAmount(String(item.amount));
+    setEditChargeCategory(item.category || 'suscripciones');
+    setEditChargeStartDate(item.start_date || period);
+    setEditChargeEndDate(item.end_date || '');
+    setEditChargeInstallments(null);
+    setEditChargeError(null);
+  };
+
+  const closeEditCharge = () => {
+    setEditingChargeId(null);
+    setEditChargeTitle('');
+    setEditChargeAmount('');
+    setEditChargeError(null);
+  };
+
+  const handleSelectEditPreset = (months: number) => {
+    setEditChargeInstallments(months);
+    const base = editChargeStartDate.trim() || period;
+    if (months === 0) {
+      setEditChargeEndDate('');
+    } else if (months === 1) {
+      setEditChargeEndDate(base);
+    } else {
+      setEditChargeEndDate(shiftPeriod(base, months - 1));
+    }
+  };
+
+  const handleSaveEditCharge = async () => {
+    if (!editingChargeId) return;
+    setEditChargeError(null);
+    const titleClean = editChargeTitle.trim();
+    const amountNum = Math.round(Number(editChargeAmount.replace(/\D/g, '') || 0));
+    if (!titleClean) {
+      setEditChargeError('El nombre del cargo es obligatorio');
+      return;
+    }
+
+    setSavingEditCharge(true);
+    try {
+      if (onUpdateRecurringItem) {
+        await onUpdateRecurringItem(editingChargeId, {
+          title: titleClean,
+          amount: amountNum,
+          category: editChargeCategory,
+          start_date: editChargeStartDate.trim() || period,
+          end_date: editChargeEndDate.trim() ? editChargeEndDate.trim() : null,
+        });
+      }
+      closeEditCharge();
+    } catch (err) {
+      setEditChargeError(
+        err instanceof Error ? err.message : 'Error al actualizar el cargo'
+      );
+    } finally {
+      setSavingEditCharge(false);
+    }
+  };
+
   const creditCards = accounts.filter((a) => a.type === 'credit_card');
   const otherAccounts = accounts.filter(
     (a) => a.type !== 'credit_card' && a.type !== 'loan'
@@ -198,6 +301,34 @@ export function CreditCardsSection({
     setCurrentBalance(String(card.current_balance || 0));
     setBillingDay(card.billing_day ? String(card.billing_day) : '25');
     setShowNewCardModal(true);
+
+    // Animación de pulso visual sobre el formulario
+    editHighlightAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(editHighlightAnim, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: false,
+      }),
+      Animated.timing(editHighlightAnim, {
+        toValue: 0.35,
+        duration: 250,
+        useNativeDriver: false,
+      }),
+      Animated.timing(editHighlightAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+      Animated.timing(editHighlightAnim, {
+        toValue: 0,
+        duration: 500,
+        useNativeDriver: false,
+      }),
+    ]).start();
+
+    // Desplazamiento animado suave hacia el módulo
+    scrollToEditForm();
   };
 
   const handleSaveCard = async () => {
@@ -317,23 +448,57 @@ export function CreditCardsSection({
 
       {/* Formulario para Crear o Editar Tarjeta con Selector Visual de Diseño */}
       {showNewCardModal ? (
-        <GlassCard style={styles.formCard}>
-          <View style={styles.formHeaderRow}>
-            <Text style={styles.formTitle}>
-              {editingCardId
-                ? 'Editar Tarjeta / Cuenta Bancaria'
-                : 'Registrar Nueva Tarjeta o Cuenta'}
-            </Text>
-            <Pressable
-              onPress={() => {
-                setShowNewCardModal(false);
-                setEditingCardId(null);
-              }}
-              style={styles.iconBtn}
-            >
-              <X size={16} color={colors.textSecondary} />
-            </Pressable>
-          </View>
+        <Animated.View
+          ref={editFormRef}
+          style={[
+            styles.animatedFormCardWrapper,
+            {
+              borderColor: editHighlightAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['rgba(255, 255, 255, 0.12)', '#34D399'],
+              }),
+            },
+          ]}
+        >
+          <GlassCard style={styles.formCard}>
+            {editingCardId ? (
+              <View style={styles.editingActiveBanner}>
+                <View style={styles.editingActiveBannerLeft}>
+                  <View style={styles.editingPulseDot} />
+                  <Pencil size={13} color="#34D399" />
+                  <Text style={styles.editingActiveBannerText}>
+                    MODO EDICIÓN ACTIVO:{' '}
+                    <Text style={styles.editingActiveCardName}>{cardName}</Text>
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    setShowNewCardModal(false);
+                    setEditingCardId(null);
+                  }}
+                  style={styles.editingCancelBtn}
+                >
+                  <Text style={styles.editingCancelBtnText}>Cancelar</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={styles.formHeaderRow}>
+              <Text style={styles.formTitle}>
+                {editingCardId
+                  ? 'Editar Tarjeta / Cuenta Bancaria'
+                  : 'Registrar Nueva Tarjeta o Cuenta'}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setShowNewCardModal(false);
+                  setEditingCardId(null);
+                }}
+                style={styles.iconBtn}
+              >
+                <X size={16} color={colors.textSecondary} />
+              </Pressable>
+            </View>
 
           {/* Selector Tipo: Tarjeta de Crédito vs Cuenta Corriente */}
           <View style={styles.segmentRow}>
@@ -504,7 +669,8 @@ export function CreditCardsSection({
             loading={submittingCard}
           />
         </GlassCard>
-      ) : null}
+      </Animated.View>
+    ) : null}
 
       {/* Listado de Tarjetas de Crédito con su Diseño Visual Fiel */}
       {creditCards.length === 0 ? (
@@ -604,10 +770,40 @@ export function CreditCardsSection({
 
                       {onUpdateAccount ? (
                         <Pressable
-                          onPress={() => openEditCardModal(card)}
-                          style={styles.actionIconChip}
+                          onPress={() => {
+                            if (editingCardId === card.id && showNewCardModal) {
+                              scrollToEditForm();
+                            } else {
+                              openEditCardModal(card);
+                            }
+                          }}
+                          style={[
+                            styles.actionIconChip,
+                            editingCardId === card.id &&
+                              showNewCardModal &&
+                              styles.actionIconChipEditing,
+                          ]}
                         >
-                          <Pencil size={14} color={colors.textSecondary} />
+                          <Pencil
+                            size={14}
+                            color={
+                              editingCardId === card.id && showNewCardModal
+                                ? '#34D399'
+                                : colors.textSecondary
+                            }
+                          />
+                        </Pressable>
+                      ) : null}
+
+                      {editingCardId === card.id && showNewCardModal ? (
+                        <Pressable
+                          onPress={scrollToEditForm}
+                          style={styles.cardEditingIndicatorPill}
+                        >
+                          <ArrowUp size={11} color="#34D399" />
+                          <Text style={styles.cardEditingIndicatorText}>
+                            Editando arriba
+                          </Text>
                         </Pressable>
                       ) : null}
 
@@ -974,6 +1170,25 @@ export function CreditCardsSection({
                                 <Plus size={12} color={colors.textPrimary} />
                                 <Text style={styles.subAddTriggerText}>Sub-ítem</Text>
                               </Pressable>
+                              {onUpdateRecurringItem ? (
+                                <Pressable
+                                  onPress={() =>
+                                    editingChargeId === item.id
+                                      ? closeEditCharge()
+                                      : openEditCharge(item)
+                                  }
+                                  style={styles.editChargeTrigger}
+                                >
+                                  <Pencil
+                                    size={13}
+                                    color={
+                                      editingChargeId === item.id
+                                        ? colors.textPrimary
+                                        : colors.textSecondary
+                                    }
+                                  />
+                                </Pressable>
+                              ) : null}
                               {onDeleteRecurringItem ? (
                                 <Pressable
                                   onPress={() => onDeleteRecurringItem(item.id)}
@@ -985,6 +1200,186 @@ export function CreditCardsSection({
                             </View>
                           </View>
                         </View>
+
+                        {/* Formulario inline para editar el cargo */}
+                        {editingChargeId === item.id ? (
+                          <View style={styles.inlineEditChargeBox}>
+                            <View style={styles.inlineEditHeader}>
+                              <Pencil size={13} color={colors.textPrimary} />
+                              <Text style={styles.inlineEditHeaderTitle}>
+                                EDITAR GASTO EN TARJETA
+                              </Text>
+                            </View>
+
+                            {editChargeError ? (
+                              <Text style={styles.errorText}>{editChargeError}</Text>
+                            ) : null}
+
+                            <View
+                              style={[
+                                styles.twoCol,
+                                !isDesktop && styles.twoColMobile,
+                              ]}
+                            >
+                              <View style={styles.col}>
+                                <GlassInput
+                                  label="Nombre del Cargo"
+                                  placeholder="Ej. Netflix, Tienda, Cena"
+                                  value={editChargeTitle}
+                                  onChangeText={setEditChargeTitle}
+                                />
+                              </View>
+                              <View style={styles.col}>
+                                <GlassInput
+                                  label="Monto Mensual o Cuota (CLP)"
+                                  placeholder="Ej. 25000"
+                                  keyboardType="numeric"
+                                  value={editChargeAmount}
+                                  onChangeText={setEditChargeAmount}
+                                />
+                              </View>
+                            </View>
+
+                            <View style={styles.formSectionGroup}>
+                              <View style={styles.sectionTitleRowWithIcon}>
+                                <Layers size={13} color={colors.textSecondary} />
+                                <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
+                              </View>
+                              <View style={styles.chipsWrap}>
+                                {CARD_CHARGE_CATEGORIES.map((cat) => {
+                                  const selected = editChargeCategory === cat;
+                                  const catColor = getCategoryColor(cat);
+                                  return (
+                                    <Pressable
+                                      key={cat}
+                                      onPress={() => setEditChargeCategory(cat)}
+                                      style={[
+                                        styles.chip,
+                                        selected && {
+                                          backgroundColor: `${catColor}20`,
+                                          borderColor: catColor,
+                                        },
+                                      ]}
+                                    >
+                                      <View
+                                        style={[
+                                          styles.categoryChipDot,
+                                          { backgroundColor: catColor },
+                                        ]}
+                                      />
+                                      <Text
+                                        style={[
+                                          styles.chipText,
+                                          selected && {
+                                            color: catColor,
+                                            fontWeight: '700',
+                                          },
+                                        ]}
+                                      >
+                                        {formatCategoryLabel(cat)}
+                                      </Text>
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+                            </View>
+
+                            <View style={styles.formSectionGroup}>
+                              <View style={styles.sectionTitleRowWithIcon}>
+                                <Clock size={13} color={colors.textSecondary} />
+                                <Text style={styles.fieldSectionLabel}>
+                                  PLAZO Y CUOTAS (¿POR CUÁNTO TIEMPO?)
+                                </Text>
+                              </View>
+                              <View style={styles.chipsWrap}>
+                                {INSTALLMENT_PRESETS.map((preset) => {
+                                  const isSelected =
+                                    editChargeInstallments === preset.months;
+                                  return (
+                                    <Pressable
+                                      key={preset.label}
+                                      onPress={() =>
+                                        handleSelectEditPreset(preset.months)
+                                      }
+                                      style={[
+                                        styles.chip,
+                                        styles.installmentChip,
+                                        isSelected && styles.installmentChipActive,
+                                      ]}
+                                    >
+                                      <Text
+                                        style={[
+                                          styles.chipText,
+                                          isSelected && styles.chipTextActive,
+                                        ]}
+                                      >
+                                        {preset.label}
+                                      </Text>
+                                    </Pressable>
+                                  );
+                                })}
+                              </View>
+
+                              <View
+                                style={[
+                                  styles.twoCol,
+                                  !isDesktop && styles.twoColMobile,
+                                  { marginTop: 6 },
+                                ]}
+                              >
+                                <View style={styles.col}>
+                                  <GlassInput
+                                    label="Mes Inicio (YYYY-MM)"
+                                    placeholder={period}
+                                    value={editChargeStartDate}
+                                    onChangeText={(text) => {
+                                      setEditChargeStartDate(text);
+                                      setEditChargeInstallments(null);
+                                    }}
+                                  />
+                                </View>
+                                <View style={styles.col}>
+                                  <GlassInput
+                                    label="Mes Término (YYYY-MM)"
+                                    placeholder="Vacío = Permanente"
+                                    value={editChargeEndDate}
+                                    onChangeText={(text) => {
+                                      setEditChargeEndDate(text);
+                                      setEditChargeInstallments(null);
+                                    }}
+                                  />
+                                </View>
+                              </View>
+                            </View>
+
+                            <View
+                              style={[
+                                styles.twoCol,
+                                !isDesktop && styles.twoColMobile,
+                                { marginTop: 4 },
+                              ]}
+                            >
+                              <View style={styles.col}>
+                                <TeslaButton
+                                  title={
+                                    savingEditCharge
+                                      ? 'Guardando...'
+                                      : 'Guardar Cambios'
+                                  }
+                                  onPress={handleSaveEditCharge}
+                                  loading={savingEditCharge}
+                                />
+                              </View>
+                              <View style={styles.col}>
+                                <TeslaButton
+                                  title="Cancelar"
+                                  variant="secondary"
+                                  onPress={closeEditCharge}
+                                />
+                              </View>
+                            </View>
+                          </View>
+                        ) : null}
 
                       {/* Lista de Sub-ítems Anidados (ej. Apple + YouTube + SmartFit) */}
                       {item.sub_items.length > 0 ? (
@@ -1799,6 +2194,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(244, 63, 94, 0.2)',
   },
+  editChargeTrigger: {
+    padding: 6,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  inlineEditChargeBox: {
+    marginTop: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.divider,
+    gap: 12,
+  },
+  inlineEditHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  inlineEditHeaderTitle: {
+    color: colors.textSecondary,
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
   errorText: {
     color: '#F43F5E',
     fontSize: 12,
@@ -1806,5 +2226,79 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.82,
+  },
+  animatedFormCardWrapper: {
+    borderRadius: radius.md,
+    borderWidth: 1.5,
+  },
+  editingActiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.3)',
+    marginBottom: 6,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  editingActiveBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+    minWidth: 180,
+  },
+  editingPulseDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: '#34D399',
+  },
+  editingActiveBannerText: {
+    color: '#34D399',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  editingActiveCardName: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
+  editingCancelBtn: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  editingCancelBtnText: {
+    color: colors.textSecondary,
+    fontSize: 10.5,
+    fontWeight: '600',
+  },
+  actionIconChipEditing: {
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+  },
+  cardEditingIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+  },
+  cardEditingIndicatorText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '700',
   },
 });
