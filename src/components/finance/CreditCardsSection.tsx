@@ -39,6 +39,7 @@ import {
   UpdateRecurringItemInput,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
+import { usePrivacy } from '@/context/PrivacyContext';
 import {
   calculateCreditCardMetrics,
   formatPeriodFull,
@@ -118,6 +119,7 @@ export function CreditCardsSection({
   onRemoveSubItem,
 }: CreditCardsSectionProps) {
   const { isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
 
   // Referencias y animación para desplazamiento al módulo de edición
   const editFormRef = useRef<View>(null);
@@ -561,11 +563,21 @@ export function CreditCardsSection({
                         isSelected && styles.brandOptionCardSelected,
                       ]}
                     >
-                      <View style={styles.brandMiniPreviewWrap}>
+                      <View
+                        style={[
+                          styles.brandMiniPreviewWrap,
+                          !isDesktop && styles.brandMiniPreviewWrapMobile,
+                        ]}
+                      >
                         <CreditCardVisual brand={option.id} compact />
                       </View>
 
-                      <View style={styles.brandOptionFooter}>
+                      <View
+                        style={[
+                          styles.brandOptionFooter,
+                          !isDesktop && styles.brandOptionFooterMobile,
+                        ]}
+                      >
                         <View style={styles.brandOptionTextCol}>
                           <Text
                             numberOfLines={1}
@@ -680,41 +692,47 @@ export function CreditCardsSection({
           </Text>
         </GlassCard>
       ) : (
-        creditCards.map((card) => {
-          const brand = resolveCardBrand(card);
-          const brandMeta =
-            CARD_DESIGN_OPTIONS.find((o) => o.id === brand) ||
-            CARD_DESIGN_OPTIONS[2];
+        <View style={styles.cardsListContainer}>
+          {creditCards.map((card) => {
+            const brand = resolveCardBrand(card);
+            const brandMeta =
+              CARD_DESIGN_OPTIONS.find((o) => o.id === brand) ||
+              CARD_DESIGN_OPTIONS[2];
 
-          const cardItems = recurringItems.filter(
-            (item) =>
-              item.account_id === card.id &&
-              item.type === 'expense' &&
-              isItemActiveInMonth(item, period)
-          );
-          const metrics = calculateCreditCardMetrics(card, cardItems, period);
+            const cardItems = recurringItems.filter(
+              (item) =>
+                item.account_id === card.id &&
+                item.type === 'expense' &&
+                isItemActiveInMonth(item, period)
+            );
+            const metrics = calculateCreditCardMetrics(card, cardItems, period);
 
-          return (
-            <GlassCard key={card.id} style={styles.cardBlock}>
-              {/* Layout Responsivo: Plástico Visual + Métricas de Cupo */}
-              <View
-                style={[
-                  styles.cardShowcaseRow,
-                  !isDesktop && styles.cardShowcaseRowMobile,
-                ]}
-              >
-                {/* Columna Izquierda (Desktop) / Superior (Móvil): Diseño Físico de la Tarjeta */}
+            return (
+              <GlassCard key={card.id} style={styles.cardBlock}>
+                {/* Layout Responsivo: Plástico Visual + Métricas de Cupo */}
                 <View
                   style={[
-                    styles.plasticVisualCol,
-                    !isDesktop && styles.plasticVisualColMobile,
+                    styles.cardShowcaseRow,
+                    !isDesktop && styles.cardShowcaseRowMobile,
                   ]}
                 >
-                  <CreditCardVisual brand={brand} cardName={card.name} />
-                </View>
+                  {/* Columna Izquierda (Desktop) / Superior (Móvil): Diseño Físico de la Tarjeta */}
+                  <View
+                    style={[
+                      styles.plasticVisualCol,
+                      !isDesktop && styles.plasticVisualColMobile,
+                    ]}
+                  >
+                    <CreditCardVisual brand={brand} cardName={card.name} />
+                  </View>
 
-                {/* Columna Derecha (Desktop) / Inferior (Móvil): Identidad, Alerta y Cupos */}
-                <View style={styles.cardMetricsCol}>
+                  {/* Columna Derecha (Desktop) / Inferior (Móvil): Identidad, Alerta y Cupos */}
+                  <View
+                    style={[
+                      styles.cardMetricsCol,
+                      !isDesktop && styles.cardMetricsColMobile,
+                    ]}
+                  >
                   {/* Cabecera de la Tarjeta y Botones de Acción */}
                   <View style={styles.cardTopRow}>
                     <View style={styles.cardIdentityTextCol}>
@@ -1443,7 +1461,8 @@ export function CreditCardsSection({
               )}
             </GlassCard>
           );
-        })
+        })}
+        </View>
       )}
 
       {/* Otras Cuentas Bancarias (Corriente / Vista) */}
@@ -1488,6 +1507,11 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     gap: 18,
+  },
+  cardsListContainer: {
+    width: '100%',
+    alignSelf: 'stretch',
+    gap: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1596,8 +1620,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   brandOptionCardMobile: {
-    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
     width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+  },
+  brandMiniPreviewWrapMobile: {
+    width: 86,
+    flexShrink: 0,
+  },
+  brandOptionFooterMobile: {
+    flex: 1,
+    alignItems: 'center',
   },
   brandOptionCardSelected: {
     borderColor: colors.buttonPrimaryBg,
@@ -1696,6 +1734,12 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     gap: 12,
+  },
+  cardMetricsColMobile: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
+    width: '100%',
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -1797,7 +1841,9 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   quotaBoxMobile: {
-    flex: 0,
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: 'auto',
     width: '100%',
     minHeight: 'auto',
     paddingVertical: 14,

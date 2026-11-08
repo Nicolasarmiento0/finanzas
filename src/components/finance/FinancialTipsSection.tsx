@@ -33,6 +33,8 @@ import {
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { GlassInput } from '@/components/ui/GlassInput';
+import { PrivacyToggleButton } from '@/components/ui/PrivacyToggleButton';
+import { usePrivacy } from '@/context/PrivacyContext';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
 import { Account, RecurringItem, VariableExpense } from '@/lib/api';
@@ -188,6 +190,7 @@ export function FinancialTipsSection({
   variableExpenses = [],
 }: FinancialTipsSectionProps) {
   const { isMobile, isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
   const [selectedInsightCategory, setSelectedInsightCategory] = useState<'all' | InsightCategory>('all');
   const [selectedTipCategory, setSelectedTipCategory] = useState<TipCategory>('all');
   const [customTips, setCustomTips] = useState<FinancialTip[]>([]);
@@ -278,7 +281,7 @@ export function FinancialTipsSection({
       recurringItems,
       variableExpenses,
     });
-  }, [period, accounts, recurringItems, variableExpenses]);
+  }, [period, accounts, recurringItems, variableExpenses, isPrivacyEnabled]);
 
   // Filtrado de Insights Cuantitativos
   const filteredInsights = useMemo(() => {
@@ -357,6 +360,9 @@ export function FinancialTipsSection({
                 <Text style={styles.periodBadgeText}>{formatPeriodFull(period)}</Text>
               </View>
             )}
+
+            {/* Modo Privado / Camouflage Mode */}
+            <PrivacyToggleButton />
 
             <Pressable
               onPress={() => setShowAddForm((prev) => !prev)}

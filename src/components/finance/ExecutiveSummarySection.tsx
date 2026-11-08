@@ -36,6 +36,7 @@ import {
   VariableExpense,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
+import { usePrivacy } from '@/context/PrivacyContext';
 import {
   exportForecastReportToCsv,
   exportMonthlyReportToCsv,
@@ -71,6 +72,7 @@ export function ExecutiveSummarySection({
   onNavigateTab,
 }: ExecutiveSummarySectionProps) {
   const { isMobile } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
 
   // Estado de exportación CSV/Excel
   const [exportStatus, setExportStatus] = useState<string | null>(null);

@@ -12,8 +12,9 @@ import Svg, {
 } from 'react-native-svg';
 import { CardBrand } from '@/lib/api';
 
-// Imagen oficial de la Santander WorldMember LATAM Pass subida por el usuario
+// Imágenes oficiales de tarjetas subidas por el usuario
 const SANTANDER_CARD_IMAGE = require('../../../assets/cards/santander-worldmember.jpg');
+const CMR_FALABELLA_IMAGE = require('../../../assets/cards/cmr-falabella.png');
 
 export interface CardDesignOption {
   id: CardBrand;
@@ -121,134 +122,23 @@ export function CreditCardVisual({
       <View
         style={[
           styles.cardFrame,
+          styles.cmrCardFrame,
           { borderRadius },
           compact && styles.cardFrameCompact,
         ]}
       >
-        <Svg
-          viewBox="0 0 380 240"
-          width="100%"
-          height="100%"
-          preserveAspectRatio="xMidYMid slice"
-        >
-          <Defs>
-            {/* Verde característico CMR Banco Falabella */}
-            <LinearGradient id="cmrGreenGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor="#67C354" />
-              <Stop offset="50%" stopColor="#58B845" />
-              <Stop offset="100%" stopColor="#4CA73A" />
-            </LinearGradient>
-
-            {/* Brillo sutil diagonal */}
-            <LinearGradient id="cmrSheen" x1="0%" y1="0%" x2="80%" y2="100%">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.18" />
-              <Stop offset="45%" stopColor="#FFFFFF" stopOpacity="0.04" />
-              <Stop offset="100%" stopColor="#000000" stopOpacity="0.08" />
-            </LinearGradient>
-
-            {/* Chip metálico plateado */}
-            <LinearGradient id="cmrChipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <Stop offset="0%" stopColor="#F5F6F8" />
-              <Stop offset="50%" stopColor="#D5D8DC" />
-              <Stop offset="100%" stopColor="#EAECEE" />
-            </LinearGradient>
-          </Defs>
-
-          {/* Superficie verde CMR */}
-          <Rect x="0" y="0" width="380" height="240" rx="18" fill="url(#cmrGreenGrad)" />
-          <Rect x="0" y="0" width="380" height="240" rx="18" fill="url(#cmrSheen)" />
-
-          {/* Chip EMV plateado centrado en la parte superior (fiel al diseño de la tarjeta CMR física) */}
-          <G transform="translate(166, 26)">
-            <Rect
-              x="0"
-              y="0"
-              width="46"
-              height="36"
-              rx="7"
-              fill="url(#cmrChipGrad)"
-              stroke="#B0B6BE"
-              strokeWidth="0.8"
-            />
-            {/* Grabado interno del chip */}
-            <Path
-              d="M0 12 H15 M31 12 H46 M0 24 H15 M31 24 H46 M23 0 V10 M23 26 V36"
-              stroke="#9AA1AA"
-              strokeWidth="0.9"
-              fill="none"
-            />
-            <Rect
-              x="14"
-              y="9"
-              width="18"
-              height="18"
-              rx="5"
-              stroke="#9AA1AA"
-              strokeWidth="0.9"
-              fill="none"
-            />
-          </G>
-
-          {/* Icono Contactless blanco a la derecha del chip */}
-          <G
-            transform="translate(226, 33)"
-            stroke="#FFFFFF"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            fill="none"
-            opacity="0.95"
-          >
-            <Path d="M 0 5 A 8 8 0 0 1 0 17" />
-            <Path d="M 5 2 A 13 13 0 0 1 5 20" />
-            <Path d="M 10 -1 A 18 18 0 0 1 10 23" />
-          </G>
-
-          {/* Logotipo CMR Banco Falabella en blanco (lado izquierdo central) */}
-          <G transform="translate(36, 122)">
-            <SvgText
-              x="0"
-              y="0"
-              fill="#FFFFFF"
-              fontSize="44"
-              fontWeight="900"
-              letterSpacing="-1.8"
-            >
-              CMR
-            </SvgText>
-            <SvgText
-              x="1"
-              y="22"
-              fill="#FFFFFF"
-              fontSize="14"
-              fontWeight="700"
-              letterSpacing="-0.2"
-              opacity="0.98"
-            >
-              Banco Falabella
-            </SvgText>
-          </G>
-
-          {/* Nombre personalizado de la tarjeta en la esquina superior derecha */}
-          {!compact && cardName ? (
-            <SvgText
-              x="346"
-              y="44"
-              fill="#FFFFFF"
-              fontSize="11"
-              fontWeight="700"
-              textAnchor="end"
-              opacity="0.92"
-            >
-              {cardName.toUpperCase()}
-            </SvgText>
-          ) : null}
-
-          {/* Logo Mastercard oficial en la esquina inferior izquierda (círculos rojo y ámbar entrelazados) */}
-          <G transform="translate(36, 172)">
-            <Circle cx="19" cy="19" r="19" fill="#EB001B" />
-            <Circle cx="41" cy="19" r="19" fill="#F79E1B" fillOpacity="0.92" />
-          </G>
-        </Svg>
+        <Image
+          source={CMR_FALABELLA_IMAGE}
+          style={[styles.cardImage, { borderRadius }]}
+          resizeMode="cover"
+        />
+        {!compact && cardName ? (
+          <View style={styles.santanderBadgeWrap}>
+            <Text numberOfLines={1} style={styles.santanderBadgeText}>
+              {cardName}
+            </Text>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -268,6 +158,7 @@ export function CreditCardVisual({
         width="100%"
         height="100%"
         preserveAspectRatio="xMidYMid slice"
+        style={styles.cardSvg}
       >
         <Defs>
           <LinearGradient id="defaultDarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -404,11 +295,24 @@ const styles = StyleSheet.create({
   cardFrameCompact: {
     aspectRatio: 1.586,
   },
+  cmrCardFrame: {
+    backgroundColor: '#3DAE2B',
+  },
   cardFrameDefaultBorder: {
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.16)',
   },
   cardImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+  },
+  cardSvg: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
     width: '100%',
     height: '100%',
   },

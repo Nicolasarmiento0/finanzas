@@ -30,6 +30,8 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
+import { usePrivacy } from '@/context/PrivacyContext';
+import { QuickExpenseShortcuts } from './QuickExpenseShortcuts';
 import {
   Account,
   CreateAccountInput,
@@ -85,6 +87,7 @@ export function WalletSection({
   onDeleteVariableExpense,
 }: WalletSectionProps) {
   const { isDesktop, isMobile } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
 
   // Gestión de Cuentas Corrientes / Vista
   const [showCheckingForm, setShowCheckingForm] = useState(false);
@@ -469,6 +472,80 @@ export function WalletSection({
             />
           </View>
         </View>
+
+        {/* Banner Hero: Presupuesto Diario Seguro (Safe-to-Spend) */}
+        <View style={styles.safeToSpendHeroBox}>
+          <View style={styles.safeToSpendTopRow}>
+            <View style={styles.safeToSpendIconWrap}>
+              <Sparkles size={16} color="#34D399" />
+            </View>
+            <View style={styles.safeToSpendTitleCol}>
+              <View style={styles.safeToSpendBadgeRow}>
+                <Text style={styles.safeToSpendEyebrow}>MOTOR DE CONTROL DIARIO</Text>
+                <View
+                  style={[
+                    styles.safeToSpendStatusBadge,
+                    remainingFreeBudget <= 0
+                      ? styles.statusBadgeDanger
+                      : spentRatio > 80
+                      ? styles.statusBadgeWarning
+                      : styles.statusBadgeOptimal,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusBadgeText,
+                      remainingFreeBudget <= 0
+                        ? styles.statusBadgeTextDanger
+                        : spentRatio > 80
+                        ? styles.statusBadgeTextWarning
+                        : styles.statusBadgeTextOptimal,
+                    ]}
+                  >
+                    {remainingFreeBudget <= 0
+                      ? 'Presupuesto Agotado'
+                      : spentRatio > 80
+                      ? 'Ritmo Acelerado'
+                      : 'Ritmo Saludable'}
+                  </Text>
+                </View>
+              </View>
+              <Text style={styles.safeToSpendTitle}>Presupuesto Diario Seguro (Safe-to-Spend)</Text>
+            </View>
+          </View>
+
+          <View style={[styles.safeToSpendMetricsRow, isMobile && styles.safeToSpendMetricsRowMobile]}>
+            <View style={styles.safeToSpendNumberCol}>
+              <Text
+                style={[
+                  styles.safeToSpendAmount,
+                  remainingFreeBudget <= 0 && styles.safeToSpendAmountDanger,
+                ]}
+              >
+                {formatCLP(dailyBudgetSuggested)}
+                <Text style={styles.safeToSpendAmountPerDay}> / día</Text>
+              </Text>
+              <Text style={styles.safeToSpendSubtext}>
+                Monto seguro para gastar hoy sin comprometer arriendo ni tarjetas de fin de mes
+              </Text>
+            </View>
+
+            <View style={[styles.safeToSpendPillsCol, isMobile && styles.safeToSpendPillsColMobile]}>
+              <View style={styles.safeToSpendMetaPill}>
+                <Calendar size={12} color={colors.textSecondary} />
+                <Text style={styles.safeToSpendMetaPillText}>
+                  {remainingDaysInMonth} {remainingDaysInMonth === 1 ? 'día restante' : 'días restantes'}
+                </Text>
+              </View>
+              <View style={styles.safeToSpendMetaPill}>
+                <Coins size={12} color="#34D399" />
+                <Text style={styles.safeToSpendMetaPillText}>
+                  {formatCLP(remainingFreeBudget)} libres totales
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
       </GlassCard>
 
       {/* =====================================================================
@@ -613,6 +690,17 @@ export function WalletSection({
             </Text>
           </Pressable>
         </View>
+
+        {/* Catálogo de Acciones Rápidas (Micro-Gastos Chilenos con Edición al Vuelo) */}
+        <QuickExpenseShortcuts
+          accounts={accounts}
+          checkingAccounts={checkingAccounts}
+          period={period}
+          onQuickLog={onCreateVariableExpense}
+          isMobile={isMobile}
+        />
+
+        <View style={styles.divider} />
 
         {/* Formulario de Nuevo Gasto Variable */}
         {showExpenseForm ? (
@@ -1118,6 +1206,141 @@ const styles = StyleSheet.create({
   budgetProgressFill: {
     height: '100%',
     borderRadius: radius.pill,
+  },
+  safeToSpendHeroBox: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.35)',
+    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    gap: 12,
+  },
+  safeToSpendTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  safeToSpendIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.sm,
+    backgroundColor: 'rgba(52, 211, 153, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safeToSpendTitleCol: {
+    flex: 1,
+    gap: 2,
+  },
+  safeToSpendBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  safeToSpendEyebrow: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  safeToSpendStatusBadge: {
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+  },
+  statusBadgeOptimal: {
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+  },
+  statusBadgeWarning: {
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  statusBadgeDanger: {
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  statusBadgeTextOptimal: {
+    color: '#34D399',
+  },
+  statusBadgeTextWarning: {
+    color: '#F59E0B',
+  },
+  statusBadgeTextDanger: {
+    color: '#EF4444',
+  },
+  safeToSpendTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  safeToSpendMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  safeToSpendMetricsRowMobile: {
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  safeToSpendNumberCol: {
+    flex: 1,
+    minWidth: 200,
+    gap: 2,
+  },
+  safeToSpendAmount: {
+    color: '#34D399',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  safeToSpendAmountDanger: {
+    color: '#EF4444',
+  },
+  safeToSpendAmountPerDay: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  safeToSpendSubtext: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  safeToSpendPillsCol: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  safeToSpendPillsColMobile: {
+    width: '100%',
+    flexDirection: 'row',
+  },
+  safeToSpendMetaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  safeToSpendMetaPillText: {
+    color: colors.textPrimary,
+    fontSize: 11,
+    fontWeight: '600',
   },
   sectionHeaderRow: {
     flexDirection: 'row',

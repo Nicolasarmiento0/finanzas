@@ -1,6 +1,6 @@
 import { Account, RecurringItem, VariableExpense } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
-import { isItemActiveInMonth } from '@/lib/finance';
+import { isItemActiveInMonth, shiftPeriod } from '@/lib/finance';
 
 export type InsightTone = 'critical' | 'warning' | 'emerald' | 'info';
 
@@ -371,38 +371,76 @@ export function generateFinancialIntelligence({
   }
 
   // =========================================================================
-  // CORRELACIÓN 4: Efecto Bola de Nieve en Deudas y Cuotas por Vencer
+  // CORRELACIÓN 4: Efecto Bola de Nieve en Deudas y Cuotas
   // =========================================================================
-  const expiringDebts = activeRecurring.filter(
+  const allExpiringExpenses = recurringItems.filter(
     (i) => i.type === 'expense' && Boolean(i.end_date)
   );
 
-  if (expiringDebts.length > 0) {
-    const totalFreedMonthly = expiringDebts.reduce((acc, i) => acc + i.amount, 0);
-    const expiringSoon = expiringDebts.filter((i) => {
-      if (!i.end_date) return false;
-      return i.end_date === period || i.end_date.localeCompare(period) >= 0;
-    });
+  // 1. Deudas y compromisos ya extinguidos respecto a este período (Flujo Ya Liberado)
+  const alreadyEndedDebts = allExpiringExpenses.filter(
+    (i) => i.end_date && i.end_date < period
+  );
 
-    if (expiringSoon.length > 0) {
-      insights.push({
-        id: 'insight-snowball-debt',
-        category: 'deudas',
-        priority: 4,
-        tone: 'emerald',
-        title: 'Efecto Bola de Nieve: Próxima Liberación de Flujo',
-        badge: `+${formatCLP(totalFreedMonthly)}/mes libre`,
-        summary: `Al terminar tus cuotas programadas, recuperarás ${formatCLP(totalFreedMonthly)} mensuales de flujo limpio.`,
-        detail: `Tienes compromisos con mes de término (${expiringSoon.map((i) => `${i.title} hasta ${i.end_date}`).join(', ')}). Tu economía ya está adaptada a operar sin ese dinero.`,
-        actionStep:
-          'Apenas expire la última cuota, transfiere el 100% de ese monto automáticamente a tu meta de ahorro o inversión para acelerar tu patrimonio sin bajar tu estilo de vida.',
-        potentialSavingsCLP: totalFreedMonthly,
-        metrics: [
-          { label: 'Flujo a Liberarse', value: `${formatCLP(totalFreedMonthly)}/mes` },
-          { label: 'Compromisos con Vencimiento', value: `${expiringSoon.length}` },
-        ],
-      });
-    }
+  if (alreadyEndedDebts.length > 0) {
+    const totalAlreadyFreed = alreadyEndedDebts.reduce((acc, i) => acc + i.amount, 0);
+    const previousMonth = shiftPeriod(period, -1);
+    const justEndedDebts = alreadyEndedDebts.filter((i) => i.end_date === previousMonth);
+    const justEndedFreed = justEndedDebts.reduce((acc, i) => acc + i.amount, 0);
+
+    const summaryText =
+      justEndedDebts.length > 0
+        ? `A partir de este mes ya no pagas ${justEndedDebts.map((i) => `${i.title} (${formatCLP(i.amount)})`).join(', ')}. Recuperaste ${formatCLP(justEndedFreed)} mensuales de flujo limpio.`
+        : `Has liberado un total acumulado de ${formatCLP(totalAlreadyFreed)} mensuales de cuotas extinguidas (${alreadyEndedDebts.map((i) => i.title).join(', ')}).`;
+
+    insights.push({
+      id: 'insight-snowball-freed',
+      category: 'deudas',
+      priority: 3,
+      tone: 'emerald',
+      title: 'Efecto Bola de Nieve: Flujo Liberado de Deudas Extinguidas',
+      badge: `+${formatCLP(totalAlreadyFreed)}/mes libre`,
+      summary: summaryText,
+      detail: `Tu economía operaba pagando estos compromisos (${alreadyEndedDebts.map((i) => `${i.title}: ${formatCLP(i.amount)}`).join(', ')}). Al haber terminado, este flujo disponible representa tu mayor capacidad de ahorro real acumulada para acelerar tu patrimonio sin alterar tu estilo de vida.`,
+      actionStep:
+        'Transfiere el 100% de este flujo mensual liberado automáticamente a tu meta de ahorro o inversión para consolidar el efecto bola de nieve.',
+      potentialSavingsCLP: totalAlreadyFreed,
+      metrics: [
+        { label: 'Flujo Liberado Acumulado', value: `${formatCLP(totalAlreadyFreed)}/mes` },
+        ...(justEndedDebts.length > 0
+          ? [{ label: 'Recién Liberado Este Mes', value: `${formatCLP(justEndedFreed)}/mes` }]
+          : []),
+        { label: 'Compromisos Extinguidos', value: `${alreadyEndedDebts.length}` },
+      ],
+    });
+  }
+
+  // 2. Cuotas activas actualmente que vencerán en el futuro
+  const activeExpiringDebts = activeRecurring.filter(
+    (i) => i.type === 'expense' && Boolean(i.end_date)
+  );
+
+  if (activeExpiringDebts.length > 0) {
+    const totalFutureFreed = activeExpiringDebts.reduce((acc, i) => acc + i.amount, 0);
+
+    insights.push({
+      id: 'insight-snowball-future',
+      category: 'deudas',
+      priority: 5,
+      tone: 'emerald',
+      title: 'Próximos Vencimientos: Liberación Futura de Cuotas',
+      badge: `+${formatCLP(totalFutureFreed)}/mes proyectado`,
+      summary: `Al completar tus cuotas vigentes, liberarás otros ${formatCLP(totalFutureFreed)} mensuales de flujo limpio.`,
+      detail: `Tienes compromisos con mes de término programado (${activeExpiringDebts.map((i) => `${i.title} hasta ${i.end_date}`).join(', ')}). Mantén la constancia hasta el último pago.`,
+      actionStep:
+        'Apenas expire cada cuota, redirige ese monto exacto al ahorro para no absorberlo en gastos cotidianos.',
+      // No se computa en el mes actual porque aún es una obligación financiera vigente obligatoria.
+      // Se activará como ahorro real una vez que el compromiso expire en su mes de término.
+      metrics: [
+        { label: 'Flujo Futuro por Liberarse', value: `${formatCLP(totalFutureFreed)}/mes` },
+        { label: 'Cuotas en Curso', value: `${activeExpiringDebts.length}` },
+      ],
+    });
   }
 
   // =========================================================================

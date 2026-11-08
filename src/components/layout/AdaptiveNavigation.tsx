@@ -16,6 +16,10 @@ import {
   User,
 } from 'lucide-react-native';
 import { useResponsive } from '@/hooks/useResponsive';
+import { FinanzAIAssistantModal } from '@/components/finance/FinanzAIAssistantModal';
+import { FinanzAITriggerButton } from '@/components/ui/FinanzAITriggerButton';
+import { PrivacyToggleButton } from '@/components/ui/PrivacyToggleButton';
+import { usePrivacy } from '@/context/PrivacyContext';
 import { logoutUser } from '@/lib/api';
 import { colors, radius } from '@/theme/tokens';
 
@@ -58,6 +62,7 @@ interface AdaptiveNavigationProps {
 
 export function AdaptiveNavigation({ children }: AdaptiveNavigationProps) {
   const { isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
   const pathname = usePathname();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -117,11 +122,15 @@ export function AdaptiveNavigation({ children }: AdaptiveNavigationProps) {
                     </Pressable>
                   );
                 })}
+
+                {/* Acceso Directo al Asistente Cuantitativo */}
+                <FinanzAITriggerButton variant="sidebar" />
               </View>
 
-              {/* Pie del Sidebar: Cerrar sesión */}
+              {/* Pie del Sidebar: Modo Privado y Cerrar sesión */}
               <View style={styles.sidebarFooter}>
                 <View style={styles.sidebarDivider} />
+                <PrivacyToggleButton style={{ marginBottom: 12, width: '100%', justifyContent: 'center' }} />
                 <Pressable
                   onPress={handleLogout}
                   style={({ pressed }) => [
@@ -139,6 +148,9 @@ export function AdaptiveNavigation({ children }: AdaptiveNavigationProps) {
 
         {/* Área de Contenido Principal */}
         <View style={styles.desktopContent}>{children}</View>
+
+        {/* Modal Universal Asistente Rápido FinanzAI */}
+        <FinanzAIAssistantModal />
       </View>
     );
   }
@@ -147,6 +159,12 @@ export function AdaptiveNavigation({ children }: AdaptiveNavigationProps) {
   return (
     <View style={styles.mobileRoot}>
       <View style={styles.mobileContent}>{children}</View>
+
+      {/* Botón Flotante Global Asistente FinanzAI */}
+      <FinanzAITriggerButton variant="fab" />
+
+      {/* Modal Universal Asistente Rápido FinanzAI */}
+      <FinanzAIAssistantModal />
 
       <View
         style={[

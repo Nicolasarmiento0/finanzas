@@ -166,6 +166,34 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+async function parseJsonSafe<T>(
+  response: Response,
+  defaultErrorMessage = 'Error de comunicación con el servidor'
+): Promise<T> {
+  const text = await response.text().catch(() => '');
+  let parsed: any = null;
+  if (text) {
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        throw new Error(`Error ${response.status}: ${defaultErrorMessage}`);
+      }
+      throw new Error(`Respuesta inválida del servidor: ${defaultErrorMessage}`);
+    }
+  }
+
+  if (!response.ok) {
+    const errorMsg =
+      parsed && typeof parsed === 'object' && typeof parsed.error === 'string'
+        ? parsed.error
+        : `Error ${response.status}: ${defaultErrorMessage}`;
+    throw new Error(errorMsg);
+  }
+
+  return (parsed ?? {}) as T;
+}
+
 // ============================================================================
 // AUTENTICACIÓN
 // ============================================================================
@@ -527,10 +555,10 @@ export async function getVariableExpenses(period?: string): Promise<VariableExpe
     ? `${API_BASE_URL}/variable-expenses?period=${encodeURIComponent(period)}`
     : `${API_BASE_URL}/variable-expenses`;
   const response = await fetch(url, { headers });
-  const data = (await response.json()) as { expenses?: VariableExpense[]; error?: string };
-  if (!response.ok) {
-    throw new Error(data.error || 'Error al obtener gastos variables');
-  }
+  const data = await parseJsonSafe<{ expenses?: VariableExpense[]; error?: string }>(
+    response,
+    'Error al obtener gastos variables'
+  );
   return data.expenses ?? [];
 }
 
@@ -543,8 +571,11 @@ export async function createVariableExpense(
     headers,
     body: JSON.stringify(input),
   });
-  const data = (await response.json()) as { expense?: VariableExpense; error?: string };
-  if (!response.ok || !data.expense) {
+  const data = await parseJsonSafe<{ expense?: VariableExpense; error?: string }>(
+    response,
+    'Error al registrar gasto variable'
+  );
+  if (!data.expense) {
     throw new Error(data.error || 'Error al registrar gasto variable');
   }
   return data.expense;
@@ -556,7 +587,7 @@ export async function updateVariableExpense(
 ): Promise<VariableExpense> {
   const headers = await getAuthHeaders();
 
-  // 1. Intentar endpoint nativo PUT /variable-expenses/:id
+  // 1. Endpoint nativo PUT /variable-expenses/:id
   try {
     const response = await fetch(`${API_BASE_URL}/variable-expenses/${id}`, {
       method: 'PUT',
@@ -564,21 +595,21 @@ export async function updateVariableExpense(
       body: JSON.stringify(input),
     });
 
-    if (response.ok) {
-      const data = (await response.json().catch(() => null)) as {
-        expense?: VariableExpense;
-        error?: string;
-      } | null;
-      if (data?.expense) {
-        return data.expense;
-      }
+    const data = await parseJsonSafe<{ expense?: VariableExpense; error?: string }>(
+      response,
+      'Error al actualizar el gasto variable'
+    );
+    if (data?.expense) {
+      return data.expense;
     }
-  } catch {
-    // Si la ruta PUT aún no está en el servidor remoto o falla la red, continuar al fallback
+  } catch (err) {
+    const isNotFound = err instanceof Error && err.message.includes('404');
+    if (!isNotFound) {
+      throw err;
+    }
   }
 
-  // 2. Fallback de alta resiliencia si el Worker remoto aún no tiene el PUT desplegado:
-  // Crear el nuevo registro con los valores editados y remover el anterior.
+  // 2. Fallback de alta resiliencia si la ruta PUT retornase 404:
   const newExpense = await createVariableExpense({
     title: input.title || 'Gasto',
     amount: input.amount || 0,
@@ -598,14 +629,25 @@ export async function updateVariableExpense(
   return newExpense;
 }
 
-export async function deleteVariableExpense(id: string): Promise<void> {
+export interface DeleteVariableExpenseResult {
+  success?: boolean;
+  balance_restored?: boolean;
+  account_id?: string | null;
+  restored_amount?: number;
+  error?: string;
+}
+
+export async function deleteVariableExpense(
+  id: string
+): Promise<DeleteVariableExpenseResult> {
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE_URL}/variable-expenses/${id}`, {
     method: 'DELETE',
     headers,
   });
-  if (!response.ok) {
-    const data = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || 'Error al eliminar gasto variable');
-  }
+  const data = await parseJsonSafe<DeleteVariableExpenseResult>(
+    response,
+    'Error al eliminar gasto variable'
+  );
+  return data || { success: true };
 }

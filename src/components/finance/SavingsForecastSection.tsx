@@ -28,6 +28,7 @@ import {
   UpdateAccountInput,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
+import { usePrivacy } from '@/context/PrivacyContext';
 import { exportForecastReportToCsv } from '@/lib/exportCsv';
 import {
   accountToSavingsAccount,
@@ -68,6 +69,7 @@ export function SavingsForecastSection({
   onDeleteAccount,
 }: SavingsForecastSectionProps) {
   const { isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
 
   // Convertir todas las cuentas de tipo 'savings' a SavingsAccount
   const savingsAccounts: SavingsAccount[] = useMemo(() => {

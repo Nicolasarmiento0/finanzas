@@ -30,7 +30,10 @@ import { FixedItemsSection } from '@/components/finance/FixedItemsSection';
 import { SavingsForecastSection } from '@/components/finance/SavingsForecastSection';
 import { WalletSection } from '@/components/finance/WalletSection';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { FinanzAITriggerButton } from '@/components/ui/FinanzAITriggerButton';
+import { PrivacyToggleButton } from '@/components/ui/PrivacyToggleButton';
 import { TeslaButton } from '@/components/ui/TeslaButton';
+import { useFinanzAI } from '@/context/FinanzAIContext';
 import { useResponsive } from '@/hooks/useResponsive';
 import {
   Account,
@@ -73,6 +76,7 @@ import {
   shiftPeriod,
 } from '@/lib/finance';
 import { generateFinancialIntelligence } from '@/lib/intelligence';
+import { usePrivacy } from '@/context/PrivacyContext';
 import { colors, radius } from '@/theme/tokens';
 
 type DashboardTab = 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings';
@@ -80,6 +84,8 @@ type DashboardTab = 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings';
 export default function DashboardScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
+  const { syncFinancialData } = useFinanzAI();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -133,6 +139,17 @@ export default function DashboardScreen() {
       active = false;
     };
   }, [router, loadAllData]);
+
+  // Sincronizar datos financieros en tiempo real con el Asistente FinanzAI
+  useEffect(() => {
+    syncFinancialData({
+      accounts,
+      recurringItems,
+      payments,
+      variableExpenses,
+      period,
+    });
+  }, [accounts, recurringItems, payments, variableExpenses, period, syncFinancialData]);
 
   // Cargar plantilla inicial basada en el Excel y el Motor de Ahorro Dual
   const handleSeedExcelTemplate = async () => {
@@ -350,7 +367,38 @@ export default function DashboardScreen() {
   };
 
   const handleDeleteVariableExpense = async (id: string) => {
-    await deleteVariableExpense(id);
+    // 1. Identificar el gasto y el monto antes de eliminarlo
+    const expenseToDelete = variableExpenses.find((exp) => exp.id === id);
+
+    // 2. Ejecutar borrado en API
+    const res = await deleteVariableExpense(id);
+
+    // 3. Garantizar proactivamente la restitución del saldo en la cuenta corriente
+    // si el backend remoto no devolvió balance_restored: true
+    if (
+      !res?.balance_restored &&
+      expenseToDelete &&
+      expenseToDelete.amount > 0
+    ) {
+      const targetAccId =
+        expenseToDelete.account_id ||
+        accounts.find((a) => a.type === 'checking')?.id;
+
+      if (targetAccId) {
+        const targetAcc = accounts.find((a) => a.id === targetAccId);
+        if (targetAcc) {
+          try {
+            await updateAccount(targetAcc.id, {
+              current_balance: Math.round(targetAcc.current_balance + expenseToDelete.amount),
+            });
+          } catch (err) {
+            console.error('Error al restituir saldo al eliminar gasto variable:', err);
+          }
+        }
+      }
+    }
+
+    // 4. Recargar datos sincronizados
     await loadAllData();
   };
 
@@ -358,7 +406,30 @@ export default function DashboardScreen() {
     id: string,
     input: UpdateVariableExpenseInput
   ) => {
+    const existing = variableExpenses.find((exp) => exp.id === id);
     await updateVariableExpense(id, input);
+
+    // Si cambió el monto del gasto, sincronizar la diferencia en la cuenta bancaria
+    if (existing && input.amount !== undefined && existing.amount !== input.amount) {
+      const diff = Math.round(input.amount) - Math.round(existing.amount);
+      const targetAccId =
+        (input.account_id !== undefined ? input.account_id : existing.account_id) ||
+        accounts.find((a) => a.type === 'checking')?.id;
+
+      if (targetAccId) {
+        const targetAcc = accounts.find((a) => a.id === targetAccId);
+        if (targetAcc) {
+          try {
+            await updateAccount(targetAcc.id, {
+              current_balance: Math.round(targetAcc.current_balance - diff),
+            });
+          } catch (err) {
+            console.error('Error al sincronizar saldo al actualizar gasto variable:', err);
+          }
+        }
+      }
+    }
+
     await loadAllData();
   };
 
@@ -407,7 +478,7 @@ export default function DashboardScreen() {
         recurringItems,
         variableExpenses,
       }),
-    [period, accounts, recurringItems, variableExpenses]
+    [period, accounts, recurringItems, variableExpenses, isPrivacyEnabled]
   );
   const topInsight = intelligenceReport.insights[0];
 
@@ -515,7 +586,12 @@ export default function DashboardScreen() {
                 ) : null}
               </View>
 
+              {/* Modo Privado / Ocultar Montos en Transporte Público */}
+              <PrivacyToggleButton />
+
               <View style={styles.headerQuickActions}>
+                <FinanzAITriggerButton variant="inline" label="FinanzAI" />
+
                 <Pressable
                   onPress={handleQuickExportCsv}
                   disabled={exportingQuick}

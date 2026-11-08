@@ -3,6 +3,8 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { FinancialTipsSection } from '@/components/finance/FinancialTipsSection';
 import { ScreenContainer } from '@/components/layout/ScreenContainer';
+import { useFinanzAI } from '@/context/FinanzAIContext';
+import { usePrivacy } from '@/context/PrivacyContext';
 import {
   Account,
   getAccounts,
@@ -17,6 +19,8 @@ import { colors } from '@/theme/tokens';
 
 export default function TipsScreen() {
   const router = useRouter();
+  const { isPrivacyEnabled } = usePrivacy();
+  const { syncFinancialData } = useFinanzAI();
   const params = useLocalSearchParams<{ period?: string }>();
   const initialPeriod =
     typeof params.period === 'string' && /^\d{4}-\d{2}$/.test(params.period.trim())
@@ -73,6 +77,15 @@ export default function TipsScreen() {
       active = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    syncFinancialData({
+      accounts,
+      recurringItems,
+      variableExpenses,
+      period,
+    });
+  }, [accounts, recurringItems, variableExpenses, period, syncFinancialData]);
 
   // Cambio de período interactivo mes a mes
   const handleChangePeriod = useCallback(async (newPeriod: string) => {

@@ -27,6 +27,7 @@ import {
   UpdateRecurringItemInput,
 } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
+import { usePrivacy } from '@/context/PrivacyContext';
 import {
   calculateCreditCardMetrics,
   CreditCardMetrics,
@@ -89,6 +90,7 @@ export function FixedItemsSection({
   onRemoveSubItem,
 }: FixedItemsSectionProps) {
   const { isDesktop } = useResponsive();
+  const { isPrivacyEnabled } = usePrivacy();
 
   // Estado para formulario de creación
   const [showAddForm, setShowAddForm] = useState(false);
