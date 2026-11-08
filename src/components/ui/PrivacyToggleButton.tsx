@@ -89,6 +89,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
     borderColor: colors.glassBorder,
+    flexShrink: 0,
   },
   pillBtnActive: {
     backgroundColor: 'rgba(52, 211, 153, 0.12)',

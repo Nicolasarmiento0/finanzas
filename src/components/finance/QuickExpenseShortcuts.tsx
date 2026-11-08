@@ -165,8 +165,8 @@ export function QuickExpenseShortcuts({
         category: activeItem.category,
         date: dateInput || undefined,
         period: dateInput ? dateInput.slice(0, 7) : period,
-        account_id: selectedAccountId || undefined,
-        deduct_from_balance: Boolean(selectedAccountId),
+        account_id: selectedAccountId || checkingAccounts[0]?.id || undefined,
+        deduct_from_balance: false,
       });
 
       // Si el usuario marcó recordar este monto como nuevo valor base

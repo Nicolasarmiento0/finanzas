@@ -80,11 +80,16 @@ El modal utilizará el diseño **iOS Liquid Glass + Tesla Minimalist**:
 
 | Píldora de 1 Toque | Algoritmo y Fórmula del Motor | Salida Generada |
 | :--- | :--- | :--- |
+| 📅 **"¿Cuánto podré ahorrar en abril?"** | Horizonte temporal a `YYYY-04` + `buildMonthlySurplusList` + `calculateConsolidatedForecast` | Aporte mensual proyectado para ese mes, saldo acumulado y créditos que expiran. |
 | 💰 **"¿Cuánto puedo ahorrar hoy de mi saldo?"** | $\text{Saldo Bancos} - \text{Fijos No Pagados} - (\text{Días} \times \text{Diario}) - \text{Colchón 15\%}$ | Monto exacto en CLP sugerido para transferir a ahorro sin descalzar el mes. |
+| 💵 **"¿Cuál es mi sueldo y flujo libre?"** | $\text{Ingresos Recurrentes} - \text{Gastos Fijos}$ | Sueldo neto, rigidez fija (%) y flujo libre de caja mensual. |
 | 🛍️ **"¿Puedo gastar \$50.000 sin descalzarme?"** | Simula $\text{Nuevo Safe-to-Spend} = \frac{\text{Margen} - 50.000}{\text{Días}}$ | Dictamen: *"Aprobado (zona verde)"* o *"Alerta: tu presupuesto diario bajará a \$X/día"*. |
-| 📅 **"¿Cuánto puedo gastar por día hasta fin de mes?"** | $\text{Safe-to-Spend} = \frac{\max(0, \text{Margen Libre})}{\text{Días Restantes}}$ | Cifra diaria en CLP y semáforo de holgura. |
-| 💳 **"¿Qué pagos obligatorios me faltan este mes?"** | Filtro de recurrentes con `is_paid = false` + facturación de tarjeta | Lista consolidada con fecha y monto total a reservar. |
+| 📈 **"¿En qué cuenta me conviene invertir?"** | Compara `interest_rate_annual` de cuentas `type === 'savings'` | Cuenta de mayor rentabilidad libre de riesgo y retorno x \$100k/año. |
+| 💳 **"¿Pagar tarjeta o ahorrar?"** | Costo rotativo de tarjeta (25-35%) vs tasa de ahorro (~5%) | Regla financiera: Ganancia garantizada al prepagar la tarjeta antes de ahorrar. |
+| 💳 **"¿Cuál es el cupo de mis tarjetas?"** | `credit_limit - current_balance` + día de corte | Cupo total, cupo usado, cupo disponible y fecha de corte. |
 | 🛡️ **"¿Cuántos meses cubren mis ahorros hoy?"** | $\frac{\text{Ahorro Líquido Acumulado}}{\text{Costo de Vida Fijo Mensual}}$ | Ratio de supervivencia (ej. *2.8 meses*) y brecha para llegar a 3 o 6 meses. |
+| 📱 **"¿Cuánto gasto en suscripciones?"** | Filtro de recurrentes con `category = 'suscripciones'` o streaming | Total mensual y costo acumulado anual en plataformas. |
+| 📅 **"¿Qué pagos obligatorios me faltan este mes?"** | Filtro de recurrentes con `is_paid = false` + facturación de tarjeta | Lista consolidada con fecha y monto total a reservar. |
 | 📉 **"¿En qué categoría se fue más dinero este mes?"** | Ranking agrupado de gastos variables por categoría | Categoría líder (ej. *Delivery 42%* o *Supermercado 35%*) y consejo de ajuste. |
 
 ---

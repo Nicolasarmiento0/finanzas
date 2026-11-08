@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(52, 211, 153, 0.12)',
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.3)',
+    flexShrink: 0,
   },
   inlineText: {
     color: colors.textPrimary,

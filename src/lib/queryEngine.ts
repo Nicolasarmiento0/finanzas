@@ -1,9 +1,16 @@
 import { Account, MonthlyPayment, RecurringItem, VariableExpense } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
 import {
+  accountToSavingsAccount,
+  buildMonthlySurplusList,
+  calculateConsolidatedForecast,
   diffPeriodsInMonths,
+  formatPeriodFull,
   getCurrentPeriod,
+  getExpiringExpensesInHorizon,
   isItemActiveInMonth,
+  shiftPeriod,
+  toYearMonth,
 } from '@/lib/finance';
 import {
   FinancialIntelligenceReport,
@@ -12,6 +19,9 @@ import {
 
 export type QueryIntent =
   | 'greeting_help'
+  | 'future_savings_projection'
+  | 'goal_target_reach'
+  | 'income_cashflow'
   | 'invest_recommendation'
   | 'card_vs_savings'
   | 'safe_to_save'
@@ -19,6 +29,11 @@ export type QueryIntent =
   | 'survival_health'
   | 'pending_commitments'
   | 'category_audit'
+  | 'credit_card_details'
+  | 'total_debt_audit'
+  | 'subscriptions_audit'
+  | 'shared_savings_partner'
+  | 'windfall_bonus'
   | 'amount_only'
   | 'fallback';
 
@@ -51,6 +66,32 @@ export interface QueryContextData {
   report?: FinancialIntelligenceReport;
 }
 
+export interface TargetHorizon {
+  targetPeriod: string; // Ej: '2027-04'
+  targetLabel: string;  // Ej: 'Abril 2027'
+  monthsAhead: number;  // Ej: 5
+}
+
+const MONTH_NAMES: Record<string, number> = {
+  enero: 0,
+  febrero: 1,
+  marzo: 2,
+  abril: 3,
+  mayo: 4,
+  junio: 5,
+  julio: 6,
+  agosto: 7,
+  septiembre: 8,
+  octubre: 9,
+  noviembre: 10,
+  diciembre: 11,
+};
+
+const MONTH_LABELS = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
 /**
  * Normaliza texto eliminando acentos, signos de puntuación y convirtiendo a minúsculas.
  */
@@ -62,6 +103,85 @@ export function normalizeQueryText(input: string): string {
     .replace(/[¿?¡!,;:()[\]{}"'\\/]/g, ' ') // Quita puntuación
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Parsea horizontes temporales futuros y meses específicos ('en abril', 'diciembre', 'el próximo mes', 'en 6 meses', 'a fin de año').
+ */
+export function extractTargetHorizonFromQuery(rawText: string, basePeriod: string): TargetHorizon | null {
+  const text = normalizeQueryText(rawText);
+  const [currY, currM] = basePeriod.split('-').map(Number);
+  const currMonthIdx = (currM || 1) - 1;
+
+  // 1. Detección de meses del calendario (ej. "en abril", "para mayo", "abril")
+  for (const [mName, mIdx] of Object.entries(MONTH_NAMES)) {
+    const regex = new RegExp(`\\b${mName}\\b`, 'i');
+    if (regex.test(text)) {
+      let targetYear = currY;
+      // Si el mes es anterior o igual al mes actual, corresponde al año siguiente
+      if (mIdx <= currMonthIdx) {
+        targetYear = currY + 1;
+      }
+      const targetPeriod = `${targetYear}-${String(mIdx + 1).padStart(2, '0')}`;
+      const monthsAhead = diffPeriodsInMonths(basePeriod, targetPeriod);
+      return {
+        targetPeriod,
+        targetLabel: `${MONTH_LABELS[mIdx]} ${targetYear}`,
+        monthsAhead,
+      };
+    }
+  }
+
+  // 2. Próximo mes / mes que viene
+  if (text.includes('proximo mes') || text.includes('mes que viene') || text.includes('siguiente mes')) {
+    const targetPeriod = shiftPeriod(basePeriod, 1);
+    const [, m] = targetPeriod.split('-').map(Number);
+    return {
+      targetPeriod,
+      targetLabel: `${MONTH_LABELS[m - 1]} ${targetPeriod.slice(0, 4)}`,
+      monthsAhead: 1,
+    };
+  }
+
+  // 3. En X meses (ej. "en 3 meses", "en 6 meses")
+  const xMesesMatch = text.match(/\ben\s*(\d+)\s*meses\b/);
+  if (xMesesMatch && xMesesMatch[1]) {
+    const delta = parseInt(xMesesMatch[1], 10);
+    if (delta > 0 && delta <= 60) {
+      const targetPeriod = shiftPeriod(basePeriod, delta);
+      const [, m] = targetPeriod.split('-').map(Number);
+      return {
+        targetPeriod,
+        targetLabel: `${MONTH_LABELS[m - 1]} ${targetPeriod.slice(0, 4)}`,
+        monthsAhead: delta,
+      };
+    }
+  }
+
+  // 4. En un año / en 1 año
+  if (text.includes('en un ano') || text.includes('en 1 ano') || text.includes('en un anio')) {
+    const targetPeriod = shiftPeriod(basePeriod, 12);
+    const [, m] = targetPeriod.split('-').map(Number);
+    return {
+      targetPeriod,
+      targetLabel: `${MONTH_LABELS[m - 1]} ${targetPeriod.slice(0, 4)}`,
+      monthsAhead: 12,
+    };
+  }
+
+  // 5. A fin de año
+  if (text.includes('fin de ano') || text.includes('fin de anio') || text.includes('fin de ano')) {
+    const targetYear = currMonthIdx >= 11 ? currY + 1 : currY;
+    const targetPeriod = `${targetYear}-12`;
+    const monthsAhead = diffPeriodsInMonths(basePeriod, targetPeriod);
+    return {
+      targetPeriod,
+      targetLabel: `Diciembre ${targetYear}`,
+      monthsAhead,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -99,7 +219,7 @@ export function extractAmountFromQuery(rawText: string): number | null {
     }
   }
 
-  // 4. Si es un número simple menor a 1000 pero mayor a 0 (ej: "500", "800")
+  // 4. Si es un número simple
   const smallNumMatch = text.match(/\b(\d{2,3})\b/);
   if (smallNumMatch && smallNumMatch[1]) {
     const smallParsed = parseInt(smallNumMatch[1], 10);
@@ -114,7 +234,11 @@ export function extractAmountFromQuery(rawText: string): number | null {
 /**
  * Clasifica la intención de la consulta usando un diccionario ponderado de modismos y finanzas personales.
  */
-export function classifyQueryIntent(normalized: string, amount: number | null): QueryIntent {
+export function classifyQueryIntent(
+  normalized: string,
+  amount: number | null,
+  horizon: TargetHorizon | null
+): QueryIntent {
   // Saludos, bienvenida y ayuda general
   const GREETING_KEYWORDS = [
     'hola',
@@ -141,7 +265,158 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'greeting_help';
   }
 
-  // Tarjeta vs Ahorro (Pre-pago de cuotas)
+  // 1. Proyecciones Futuras de Ahorro en Meses Específicos (ej. "¿cuánto podré ahorrar en abril?", "cuánto ahorraré en 6 meses")
+  const FUTURE_SAVINGS_KEYWORDS = [
+    'cuanto podre ahorrar',
+    'cuanto podria ahorrar',
+    'cuanto ahorrare',
+    'cuanto voy a ahorrar',
+    'cuanto podre juntar',
+    'cuanto juntare',
+    'cuanto podre guardar',
+    'cuanto guardare',
+    'cuanto tendre ahorrado',
+    'proyeccion de ahorro',
+    'proyeccion para',
+    'ahorrar en',
+    'ahorro en',
+    'juntar en',
+  ];
+  if (
+    horizon !== null ||
+    FUTURE_SAVINGS_KEYWORDS.some((kw) => normalized.includes(kw))
+  ) {
+    // Si menciona un mes o un horizonte temporal y tiene intención de ahorro
+    if (
+      normalized.includes('ahorr') ||
+      normalized.includes('junt') ||
+      normalized.includes('guard') ||
+      normalized.includes('proyecc') ||
+      normalized.includes('tendre') ||
+      normalized.includes('podre') ||
+      normalized.includes('podria') ||
+      normalized.includes('meta')
+    ) {
+      if (amount !== null && (normalized.includes('cuando llegare') || normalized.includes('para llegar'))) {
+        return 'goal_target_reach';
+      }
+      return 'future_savings_projection';
+    }
+  }
+
+  // 2. Metas de ahorro / Horizonte para llegar a un monto (ej. "¿cuándo llegaré a 5 millones?")
+  const GOAL_KEYWORDS = [
+    'cuando llegare',
+    'cuando llego',
+    'cuando tendre',
+    'cuanto me falta para',
+    'en cuanto tiempo llego',
+    'para juntar',
+    'para llegar a',
+    'meta de ahorro',
+    'meta para',
+  ];
+  if (GOAL_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'goal_target_reach';
+  }
+
+  // 3. Sueldo, Ingresos y Flujo de Caja Libre
+  const INCOME_KEYWORDS = [
+    'cuanto gano',
+    'cual es mi sueldo',
+    'cuanto es mi sueldo',
+    'mis ingresos',
+    'ingresos totales',
+    'total de ingresos',
+    'cuanto me queda libre',
+    'flujo libre',
+    'flujo de caja',
+    'margen libre',
+    'superavit mensual',
+  ];
+  if (INCOME_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'income_cashflow';
+  }
+
+  // 4. Bono, Aguinaldo o Ingreso Extra (Windfall Engine)
+  const WINDFALL_KEYWORDS = [
+    'bono',
+    'aguinaldo',
+    'ingreso extra',
+    'plata extra',
+    'dinero extra',
+    'me llego un bono',
+    'recibo un bono',
+    'reparto de utilidades',
+    'devolucion de impuestos',
+  ];
+  if (WINDFALL_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'windfall_bonus';
+  }
+
+  // 5. Cupo y Detalles de Tarjeta de Crédito
+  const CARD_DETAILS_KEYWORDS = [
+    'cupo de mi tarjeta',
+    'cupo de la tarjeta',
+    'cupo disponible',
+    'cupo santander',
+    'cupo falabella',
+    'cupo cmr',
+    'limite de credito',
+    'cuando corta la tarjeta',
+    'fecha de corte',
+    'dia de corte',
+    'dia de facturacion',
+    'cuando factura la tarjeta',
+  ];
+  if (CARD_DETAILS_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'credit_card_details';
+  }
+
+  // 6. Deuda Total Consolidada
+  const TOTAL_DEBT_KEYWORDS = [
+    'cuanto debo en total',
+    'todas mis deudas',
+    'deuda total',
+    'total deudas',
+    'debo en total',
+    'sumando todo cuanto debo',
+    'mis creditos',
+  ];
+  if (TOTAL_DEBT_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'total_debt_audit';
+  }
+
+  // 7. Auditoría de Suscripciones
+  const SUBSCRIPTIONS_KEYWORDS = [
+    'cuanto gasto en suscripciones',
+    'que suscripciones tengo',
+    'mis suscripciones',
+    'suscripciones activas',
+    'netflix',
+    'spotify',
+    'apps mensuales',
+    'gastos en streaming',
+  ];
+  if (SUBSCRIPTIONS_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'subscriptions_audit';
+  }
+
+  // 8. Ahorro en Pareja / Cuentas Compartidas
+  const SHARED_SAVINGS_KEYWORDS = [
+    'ahorro en pareja',
+    'cuenta compartida',
+    'cuanto tenemos ahorrado',
+    'cuanto aporta mi pareja',
+    'cuanto ha puesto mi pareja',
+    'ahorro compartido',
+    'ahorros en pareja',
+  ];
+  if (SHARED_SAVINGS_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'shared_savings_partner';
+  }
+
+  // 9. Tarjeta vs Ahorro (Pre-pago de cuotas)
   const CARD_VS_SAVINGS_KEYWORDS = [
     'pagar tarjeta o ahorrar',
     'pago la tarjeta o ahorro',
@@ -158,7 +433,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'card_vs_savings';
   }
 
-  // Dónde invertir o qué cuenta da más intereses
+  // 10. Dónde invertir o qué cuenta da más intereses
   const INVEST_KEYWORDS = [
     'donde invertir',
     'en que cuenta invertir',
@@ -187,7 +462,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'invest_recommendation';
   }
 
-  // Cuánto puedo ahorrar hoy / Ahorro seguro
+  // 11. Cuánto puedo ahorrar hoy / Ahorro seguro inmediato
   const SAFE_TO_SAVE_KEYWORDS = [
     'cuanto puedo ahorrar hoy',
     'cuanto puedo ahorrar',
@@ -206,7 +481,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'safe_to_save';
   }
 
-  // Simulación de Compra / Gasto Imprevisto ("What-If Spend")
+  // 12. Simulación de Compra / Gasto Imprevisto ("What-If Spend")
   const SPEND_KEYWORDS = [
     'puedo gastar',
     'me alcanza para',
@@ -231,7 +506,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'what_if_spend';
   }
 
-  // Compromisos, facturación y pagos pendientes
+  // 13. Compromisos, facturación y pagos pendientes
   const COMMITMENTS_KEYWORDS = [
     'que cuentas me faltan pagar',
     'que debo este mes',
@@ -249,7 +524,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'pending_commitments';
   }
 
-  // Salud Financiera y Supervivencia
+  // 14. Salud Financiera y Supervivencia
   const SURVIVAL_KEYWORDS = [
     'como voy',
     'como van mis finanzas',
@@ -267,7 +542,7 @@ export function classifyQueryIntent(normalized: string, amount: number | null): 
     return 'survival_health';
   }
 
-  // Auditoría de Categorías
+  // 15. Auditoría de Categorías
   const CATEGORY_KEYWORDS = [
     'en que gaste mas',
     'donde se fue la plata',
@@ -306,11 +581,26 @@ function getRemainingDaysInCurrentMonth(): { totalDays: number; currentDay: numb
 
 /**
  * Obtiene la liquidez bancaria total en cuentas vista / corrientes (excluye ahorros e inversiones ilíquidas).
+ * Refleja los gastos variables del periodo si se proporcionan.
  */
-function getCheckingLiquidBalance(accounts: Account[]): number {
-  return accounts
+function getCheckingLiquidBalance(
+  accounts: Account[],
+  variableExpenses?: VariableExpense[],
+  period?: string
+): number {
+  const baseChecking = accounts
     .filter((a) => a.type === 'checking')
     .reduce((sum, a) => sum + (a.current_balance || 0), 0);
+
+  if (!variableExpenses || variableExpenses.length === 0) {
+    return baseChecking;
+  }
+  const currentPeriod = period || new Date().toISOString().slice(0, 7);
+  const spentInPeriod = variableExpenses
+    .filter((e) => (e.period || e.date?.slice(0, 7)) === currentPeriod)
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  return Math.max(0, baseChecking - spentInPeriod);
 }
 
 /**
@@ -341,6 +631,494 @@ function getPendingFixedExpenses(
 // SOLVERS DETERMINISTAS POR INTENCIÓN
 // ==========================================
 
+/**
+ * Responde proyecciones futuras de ahorro (ej. "¿Cuánto podré ahorrar en abril?").
+ */
+export function solveFutureSavings(
+  horizon: TargetHorizon | null,
+  context: QueryContextData
+): QueryEngineResult {
+  const { accounts, recurringItems } = context;
+  const basePeriod = context.period || getCurrentPeriod();
+
+  const target =
+    horizon || {
+      targetPeriod: shiftPeriod(basePeriod, 3),
+      targetLabel: formatPeriodFull(shiftPeriod(basePeriod, 3)),
+      monthsAhead: 3,
+    };
+
+  const { targetPeriod, targetLabel, monthsAhead } = target;
+
+  // 1. Desglose del mes objetivo
+  const activeItemsInTarget = recurringItems.filter((i) =>
+    isItemActiveInMonth(i, targetPeriod)
+  );
+  const targetIncome = activeItemsInTarget
+    .filter((i) => i.type === 'income')
+    .reduce((sum, i) => sum + i.amount, 0);
+  const targetExpenses = activeItemsInTarget
+    .filter((i) => i.type === 'expense')
+    .reduce((sum, i) => sum + i.amount, 0);
+  const targetSurplus = Math.max(0, targetIncome - targetExpenses);
+
+  // 2. Capacidad de ahorro de ese mes específico
+  const savingsAccounts = accounts.filter((a) => a.type === 'savings');
+  const fixedSavingsConfigured = savingsAccounts.reduce(
+    (sum, a) => sum + (a.fixed_contribution || 0) + (a.partner_monthly_contribution || 0),
+    0
+  );
+  const tenPercentSurplus = Math.round(targetSurplus * 0.1);
+  const monthlySavingsCapacity = fixedSavingsConfigured + tenPercentSurplus;
+
+  // 3. Pronóstico acumulado a esa fecha usando el motor dual
+  const typedSavings = savingsAccounts.map((a) => accountToSavingsAccount(a));
+  const surplusList = buildMonthlySurplusList(recurringItems, basePeriod, monthsAhead);
+  const forecast = calculateConsolidatedForecast(typedSavings, monthsAhead, surplusList);
+
+  // 4. Ver si expira algún crédito o compromiso antes de ese mes
+  const expiring = getExpiringExpensesInHorizon(recurringItems, basePeriod, monthsAhead);
+
+  const breakdownLines: string[] = [
+    `• Ingresos proyectados para ${targetLabel}: ${formatCLP(targetIncome)}.`,
+    `• Gastos fijos vigentes en ese mes: -${formatCLP(targetExpenses)}.`,
+    `• Superávit libre mensual proyectado: ${formatCLP(targetSurplus)}.`,
+    `• Aporte de ahorro mensual estimado: ${formatCLP(monthlySavingsCapacity)} (Aporte fijo: ${formatCLP(fixedSavingsConfigured)} + Regla 10% superávit: ${formatCLP(tenPercentSurplus)}).`,
+    `• Saldo total acumulado proyectado a esa fecha: ${formatCLP(forecast.finalBalance)} (incluye ${formatCLP(forecast.totalInterest)} de intereses compuestos).`,
+  ];
+
+  if (expiring.length > 0) {
+    const expText = expiring
+      .map((e) => `${e.title} (${formatCLP(e.amount)}/mes en ${e.endLabel})`)
+      .join(', ');
+    breakdownLines.push(`• 🎉 ¡Liberación de liquidez!: Antes de esa fecha terminas de pagar: ${expText}.`);
+  }
+
+  return {
+    intent: 'future_savings_projection',
+    title: `Proyección de Ahorro: ${targetLabel}`,
+    verdict: `En ${targetLabel} podrás ahorrar aprox. ${formatCLP(monthlySavingsCapacity)}/mes`,
+    verdictTone: 'emerald',
+    recommendation: `Para **${targetLabel}** (en ${monthsAhead} meses), tu capacidad de ahorro proyectada será de **${formatCLP(monthlySavingsCapacity)} ese mes**, alcanzando un saldo acumulado estimado de **${formatCLP(forecast.finalBalance)}** en tus cuentas de ahorro.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: `Ahorro ${targetLabel}`, value: formatCLP(monthlySavingsCapacity), tone: 'emerald' },
+      { label: 'Saldo Acumulado', value: formatCLP(forecast.finalBalance), tone: 'emerald' },
+      { label: 'Horizonte', value: `${monthsAhead} meses`, tone: 'neutral' },
+    ],
+    suggestedFollowUps: [
+      '¿En qué cuenta me recomiendas invertir?',
+      '¿Cuánto puedo ahorrar hoy de mi saldo?',
+      '¿Cuál es mi sueldo y flujo de caja libre?',
+    ],
+  };
+}
+
+/**
+ * Responde en cuántos meses llegará a una meta de ahorro (ej. "¿Cuándo llegaré a 5 millones?").
+ */
+export function solveGoalTargetReach(
+  targetAmount: number | null,
+  context: QueryContextData
+): QueryEngineResult {
+  const { accounts, recurringItems } = context;
+  const basePeriod = context.period || getCurrentPeriod();
+
+  const savingsAccounts = accounts.filter((a) => a.type === 'savings');
+  const currentTotalSavings = savingsAccounts.reduce((sum, a) => sum + (a.current_balance || 0), 0);
+
+  // Si no especificó monto, usar meta configurada en cuentas o 5 millones por defecto
+  const goal =
+    targetAmount ||
+    savingsAccounts.find((a) => (a.target_amount || 0) > 0)?.target_amount ||
+    5000000;
+
+  if (currentTotalSavings >= goal) {
+    return {
+      intent: 'goal_target_reach',
+      title: 'Meta de Ahorro Alcanzada',
+      verdict: `¡Ya tienes ${formatCLP(currentTotalSavings)} acumulados!`,
+      verdictTone: 'emerald',
+      recommendation: `¡Felicidades! Tu saldo actual en cuentas de ahorro (${formatCLP(currentTotalSavings)}) ya supera tu meta de **${formatCLP(goal)}**. Puedes definir una meta superior o invertir el excedente en instrumentos de mayor plazo.`,
+      detailedBreakdown: [
+        `• Saldo actual en cuentas de ahorro: ${formatCLP(currentTotalSavings)}.`,
+        `• Meta evaluada: ${formatCLP(goal)}.`,
+      ],
+      metrics: [
+        { label: 'Saldo Actual', value: formatCLP(currentTotalSavings), tone: 'emerald' },
+        { label: 'Meta', value: formatCLP(goal), tone: 'neutral' },
+      ],
+    };
+  }
+
+  // Simular proyección mes a mes hasta 60 meses
+  const typedSavings = savingsAccounts.map((a) => accountToSavingsAccount(a));
+  const surplusList = buildMonthlySurplusList(recurringItems, basePeriod, 60);
+  const forecast = calculateConsolidatedForecast(typedSavings, 60, surplusList);
+
+  let reachedMonthIndex = -1;
+  for (let i = 0; i < forecast.points.length; i++) {
+    if (forecast.points[i].totalBalance >= goal) {
+      reachedMonthIndex = i;
+      break;
+    }
+  }
+
+  const gap = goal - currentTotalSavings;
+
+  if (reachedMonthIndex >= 0) {
+    const reachedPoint = forecast.points[reachedMonthIndex];
+    return {
+      intent: 'goal_target_reach',
+      title: `Meta de Ahorro: ${formatCLP(goal)}`,
+      verdict: `Llegarás en ${reachedPoint.monthLabel} (${reachedMonthIndex + 1} meses)`,
+      verdictTone: 'emerald',
+      recommendation: `Manteniendo tu ritmo de ahorro actual y la rentabilidad de tus cuentas, alcanzarás los **${formatCLP(goal)}** en **${reachedPoint.monthLabel}** (faltan aprox. ${reachedMonthIndex + 1} meses).`,
+      detailedBreakdown: [
+        `• Saldo actual en ahorro: ${formatCLP(currentTotalSavings)}.`,
+        `• Brecha restante por juntar: ${formatCLP(gap)}.`,
+        `• Fecha estimada de llegada: ${reachedPoint.monthLabel}.`,
+        `• Intereses ganados en el trayecto: ${formatCLP(reachedPoint.cumulativeInterest)}.`,
+      ],
+      metrics: [
+        { label: 'Meta de Ahorro', value: formatCLP(goal), tone: 'emerald' },
+        { label: 'Fecha Estimada', value: reachedPoint.monthLabel, tone: 'emerald' },
+        { label: 'Tiempo Restante', value: `${reachedMonthIndex + 1} meses`, tone: 'neutral' },
+      ],
+    };
+  }
+
+  return {
+    intent: 'goal_target_reach',
+    title: `Meta de Ahorro: ${formatCLP(goal)}`,
+    verdict: 'Horizonte superior a 5 años con el ritmo actual',
+    verdictTone: 'amber',
+    recommendation: `Para juntar **${formatCLP(goal)}**, con tu tasa de ahorro actual necesitarás más de 5 años. Te sugerimos aumentar tu aporte fijo mensual o destinar ingresos extra para acelerar la meta.`,
+    detailedBreakdown: [
+      `• Saldo actual en ahorro: ${formatCLP(currentTotalSavings)}.`,
+      `• Brecha restante: ${formatCLP(gap)}.`,
+      '• Consejo: Reducir gastos fijos innecesarios liberará más superávit cada mes.',
+    ],
+  };
+}
+
+/**
+ * Responde sobre ingresos mensuales, sueldo y flujo de caja libre.
+ */
+export function solveIncomeCashflow(context: QueryContextData): QueryEngineResult {
+  const { recurringItems } = context;
+  const period = context.period || getCurrentPeriod();
+
+  const activeIncomes = recurringItems.filter(
+    (i) => i.type === 'income' && isItemActiveInMonth(i, period)
+  );
+  const totalIncome = activeIncomes.reduce((sum, i) => sum + i.amount, 0);
+
+  const activeExpenses = recurringItems.filter(
+    (i) => i.type === 'expense' && isItemActiveInMonth(i, period)
+  );
+  const totalFixedExpenses = activeExpenses.reduce((sum, i) => sum + i.amount, 0);
+
+  const freeCashFlow = totalIncome - totalFixedExpenses;
+  const fixedRatio = totalIncome > 0 ? Math.round((totalFixedExpenses / totalIncome) * 100) : 0;
+  const freeRatio = totalIncome > 0 ? Math.round((freeCashFlow / totalIncome) * 100) : 0;
+
+  const incomeListLines = activeIncomes.map((inc) => `• ${inc.title}: ${formatCLP(inc.amount)}`);
+
+  return {
+    intent: 'income_cashflow',
+    title: 'Análisis de Ingresos y Flujo Libre de Caja',
+    verdict: `Ingreso mensual: ${formatCLP(totalIncome)} · Flujo libre: ${formatCLP(freeCashFlow)} (${freeRatio}%)`,
+    verdictTone: freeCashFlow > 0 ? 'emerald' : 'coral',
+    recommendation: `Tus ingresos recurrentes suman **${formatCLP(totalIncome)} al mes**. Después de cubrir tus gastos fijos obligatorios (${formatCLP(totalFixedExpenses)}, que representan el ${fixedRatio}% de tu sueldo), te queda un **flujo libre de caja de ${formatCLP(freeCashFlow)}** para ahorro y consumo diario.`,
+    detailedBreakdown: [
+      ...incomeListLines,
+      `• Gastos fijos obligatorios: -${formatCLP(totalFixedExpenses)} (${fixedRatio}% de rigidez).`,
+      `• Flujo de Caja Libre resultante: ${formatCLP(freeCashFlow)} (${freeRatio}% de tu ingreso).`,
+    ],
+    metrics: [
+      { label: 'Sueldo Total', value: formatCLP(totalIncome), tone: 'neutral' },
+      { label: 'Gastos Fijos', value: formatCLP(totalFixedExpenses), tone: 'neutral' },
+      { label: 'Flujo Libre', value: formatCLP(freeCashFlow), tone: 'emerald' },
+    ],
+    suggestedFollowUps: [
+      '¿Cuánto puedo ahorrar hoy de mi saldo?',
+      '¿En qué cuenta me recomiendas invertir?',
+      '¿Qué cuentas me faltan pagar este mes?',
+    ],
+  };
+}
+
+/**
+ * Responde el cupo disponible y fecha de corte de las tarjetas de crédito.
+ */
+export function solveCreditCardDetails(context: QueryContextData): QueryEngineResult {
+  const { accounts } = context;
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+
+  if (creditCards.length === 0) {
+    return {
+      intent: 'credit_card_details',
+      title: 'Tarjetas de Crédito',
+      verdict: 'No tienes tarjetas de crédito registradas',
+      verdictTone: 'blue',
+      recommendation:
+        'No registras tarjetas de crédito en FinanzApp. Puedes agregar tu tarjeta Santander o CMR Falabella desde la sección de tarjetas.',
+      detailedBreakdown: [],
+    };
+  }
+
+  const breakdownLines = creditCards.map((c) => {
+    const limit = c.credit_limit || 0;
+    const used = c.current_balance || 0;
+    const available = Math.max(0, limit - used);
+    const cutStr = c.billing_day ? `Día ${c.billing_day} de cada mes` : 'No configurado';
+    return `• **${c.name}**: Cupo Total: ${formatCLP(limit)} | Usado: ${formatCLP(used)} | Disponible: ${formatCLP(available)} | Corte: ${cutStr}`;
+  });
+
+  const totalLimit = creditCards.reduce((sum, c) => sum + (c.credit_limit || 0), 0);
+  const totalUsed = creditCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+  const totalAvailable = Math.max(0, totalLimit - totalUsed);
+
+  return {
+    intent: 'credit_card_details',
+    title: 'Cupos y Facturación de Tarjetas de Crédito',
+    verdict: `Cupo disponible total: ${formatCLP(totalAvailable)} de ${formatCLP(totalLimit)}`,
+    verdictTone: totalUsed / (totalLimit || 1) > 0.5 ? 'amber' : 'emerald',
+    recommendation: `Tienes **${creditCards.length} tarjetas registradas** con un cupo total de **${formatCLP(totalLimit)}**. Actualmente tienes **${formatCLP(totalAvailable)} disponibles** y una deuda utilizada de ${formatCLP(totalUsed)}.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: 'Cupo Total', value: formatCLP(totalLimit), tone: 'neutral' },
+      { label: 'Cupo Usado', value: formatCLP(totalUsed), tone: 'coral' },
+      { label: 'Disponible', value: formatCLP(totalAvailable), tone: 'emerald' },
+    ],
+    suggestedFollowUps: [
+      '¿Me conviene pagar la tarjeta o ahorrar?',
+      '¿Cuánto debo en total sumando todo?',
+    ],
+  };
+}
+
+/**
+ * Responde el consolidado total de deudas (tarjetas + préstamos).
+ */
+export function solveTotalDebtAudit(context: QueryContextData): QueryEngineResult {
+  const { accounts, recurringItems } = context;
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+  const cardDebt = creditCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+
+  const loanItems = recurringItems.filter(
+    (i) => i.type === 'expense' && (i.category === 'prestamo' || i.title.toLowerCase().includes('credito') || i.title.toLowerCase().includes('prestamo'))
+  );
+  const loansTotal = loanItems.reduce((sum, i) => sum + i.amount, 0);
+
+  const totalDebt = cardDebt + loansTotal;
+
+  if (totalDebt === 0) {
+    return {
+      intent: 'total_debt_audit',
+      title: 'Auditoría Total de Deudas',
+      verdict: '¡Cero deudas! Portafolio 100% limpio',
+      verdictTone: 'emerald',
+      recommendation:
+        'No tienes deuda rotativa en tarjetas de crédito ni préstamos activos registrados. Eres libre de destinar todo tu excedente a inversión.',
+      detailedBreakdown: ['• Deuda en tarjetas: $0', '• Préstamos o créditos de consumo: $0'],
+    };
+  }
+
+  const breakdownLines = [
+    `• Deuda acumulada en tarjetas de crédito: ${formatCLP(cardDebt)}.`,
+  ];
+  loanItems.forEach((l) => {
+    breakdownLines.push(`• Préstamo: ${l.title} (${formatCLP(l.amount)}/mes).`);
+  });
+
+  return {
+    intent: 'total_debt_audit',
+    title: 'Auditoría Total de Deudas',
+    verdict: `Deuda total consolidada: ${formatCLP(totalDebt)}`,
+    verdictTone: 'coral',
+    recommendation: `Tu deuda total identificada suma **${formatCLP(totalDebt)}** (${formatCLP(cardDebt)} en tarjetas y ${formatCLP(loansTotal)} en cuotas/préstamos). Te recomendamos priorizar la liquidación de las tarjetas de crédito debido a su alto costo financiero.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: 'Deuda Tarjetas', value: formatCLP(cardDebt), tone: 'coral' },
+      { label: 'Cuotas Préstamos', value: formatCLP(loansTotal), tone: 'amber' },
+      { label: 'Total Deuda', value: formatCLP(totalDebt), tone: 'coral' },
+    ],
+    suggestedFollowUps: [
+      '¿Me conviene pagar la tarjeta o ahorrar?',
+      '¿Qué cuentas me faltan pagar este mes?',
+    ],
+  };
+}
+
+/**
+ * Responde el desglose de suscripciones y apps de streaming.
+ */
+export function solveSubscriptionsAudit(context: QueryContextData): QueryEngineResult {
+  const { recurringItems } = context;
+  const subs = recurringItems.filter(
+    (i) =>
+      i.type === 'expense' &&
+      (i.category === 'suscripciones' ||
+        ['netflix', 'spotify', 'prime', 'youtube', 'disney', 'max', 'icloud', 'chatgpt'].some((k) =>
+          i.title.toLowerCase().includes(k)
+        ))
+  );
+
+  const monthlyTotal = subs.reduce((sum, s) => sum + s.amount, 0);
+  const annualTotal = monthlyTotal * 12;
+
+  if (subs.length === 0) {
+    return {
+      intent: 'subscriptions_audit',
+      title: 'Auditoría de Suscripciones',
+      verdict: 'No tienes suscripciones registradas',
+      verdictTone: 'blue',
+      recommendation:
+        'No tienes suscripciones registradas en la categoría "Suscripciones & Apps". Puedes agregarlas en la pestaña Gastos Fijos para auditar su impacto anual.',
+      detailedBreakdown: [],
+    };
+  }
+
+  const breakdownLines = subs.map(
+    (s) => `• ${s.title}: ${formatCLP(s.amount)}/mes (${formatCLP(s.amount * 12)}/año)`
+  );
+
+  return {
+    intent: 'subscriptions_audit',
+    title: 'Auditoría de Suscripciones y Apps',
+    verdict: `Gastas ${formatCLP(monthlyTotal)}/mes (${formatCLP(annualTotal)}/año)`,
+    verdictTone: monthlyTotal > 50000 ? 'amber' : 'emerald',
+    recommendation: `Tienes **${subs.length} suscripciones activas** que representan **${formatCLP(monthlyTotal)} al mes** (${formatCLP(annualTotal)} al año). Auditar las plataformas que menos usas puede liberar liquidez directa para tu ahorro.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: 'Total Mensual', value: formatCLP(monthlyTotal), tone: 'neutral' },
+      { label: 'Costo Anual', value: formatCLP(annualTotal), tone: 'amber' },
+      { label: 'Cantidad', value: `${subs.length} apps`, tone: 'neutral' },
+    ],
+    suggestedFollowUps: [
+      '¿En qué categoría se fue más dinero este mes?',
+      '¿Cuánto puedo ahorrar hoy de mi saldo?',
+    ],
+  };
+}
+
+/**
+ * Responde sobre el ahorro en pareja y metas conjuntas.
+ */
+export function solveSharedSavings(context: QueryContextData): QueryEngineResult {
+  const { accounts } = context;
+  const sharedAccounts = accounts.filter((a) => a.type === 'savings' && Boolean(a.is_shared));
+
+  if (sharedAccounts.length === 0) {
+    return {
+      intent: 'shared_savings_partner',
+      title: 'Ahorro en Pareja',
+      verdict: 'No tienes cuentas compartidas activas',
+      verdictTone: 'blue',
+      recommendation:
+        'Actualmente no tienes cuentas de ahorro configuradas en modo compartido con tu pareja. Puedes marcar cualquier cuenta de ahorro como "Ahorro en Pareja" para definir metas y aportes conjuntos.',
+      detailedBreakdown: [],
+    };
+  }
+
+  const totalSharedBalance = sharedAccounts.reduce((sum, a) => sum + (a.current_balance || 0), 0);
+  const partnerName = sharedAccounts[0].partner_name || 'Tu pareja';
+
+  const breakdownLines = sharedAccounts.map((a) => {
+    const bal = formatCLP(a.current_balance || 0);
+    const myMonthly = formatCLP(a.fixed_contribution || 0);
+    const partnerMonthly = formatCLP(a.partner_monthly_contribution || 0);
+    return `• **${a.name}**: Saldo: ${bal} | Tu aporte: ${myMonthly}/mes | Aporte de ${partnerName}: ${partnerMonthly}/mes`;
+  });
+
+  return {
+    intent: 'shared_savings_partner',
+    title: 'Ahorro Conjunto en Pareja',
+    verdict: `Total ahorrado entre ambos: ${formatCLP(totalSharedBalance)}`,
+    verdictTone: 'emerald',
+    recommendation: `Tienen **${formatCLP(totalSharedBalance)} acumulados** en sus metas de ahorro en pareja junto a **${partnerName}**.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: 'Total Pareja', value: formatCLP(totalSharedBalance), tone: 'emerald' },
+      { label: 'Cuentas Compartidas', value: `${sharedAccounts.length}`, tone: 'neutral' },
+    ],
+    suggestedFollowUps: [
+      '¿En qué cuenta me recomiendas invertir?',
+      '¿Cuánto podré ahorrar en abril?',
+    ],
+  };
+}
+
+/**
+ * Responde qué hacer ante un bono o ingreso extraordinario (Waterfall financiero).
+ */
+export function solveWindfallBonus(
+  amount: number | null,
+  context: QueryContextData
+): QueryEngineResult {
+  const { accounts } = context;
+  const bonus = amount || 500000;
+  const formattedBonus = formatCLP(bonus);
+
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+  const cardDebt = creditCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+
+  const savingsAccounts = accounts.filter((a) => a.type === 'savings');
+  const bestAccount = [...savingsAccounts].sort(
+    (a, b) => (b.interest_rate_annual || 0) - (a.interest_rate_annual || 0)
+  )[0];
+
+  const breakdownLines: string[] = [];
+
+  if (cardDebt > 0) {
+    const payAmount = Math.min(bonus, cardDebt);
+    const remaining = bonus - payAmount;
+    breakdownLines.push(
+      `1. **Prioridad 1 (Deuda Cara):** Pagar ${formatCLP(payAmount)} a tu tarjeta de crédito para evitar intereses rotativos (~30% anual garantizado).`
+    );
+    if (remaining > 0) {
+      breakdownLines.push(
+        `2. **Prioridad 2 (Inversión):** Depositar el remanente de ${formatCLP(remaining)} en ${bestAccount ? bestAccount.name : 'tu cuenta de ahorro'} (${bestAccount?.interest_rate_annual || 5}% anual).`
+      );
+    }
+    return {
+      intent: 'windfall_bonus',
+      title: `Estrategia para tu Bono de ${formattedBonus}`,
+      verdict: `Recomendación: Pagar ${formatCLP(payAmount)} de tarjeta de crédito`,
+      verdictTone: 'coral',
+      recommendation: `Con este bono de **${formattedBonus}**, tu movimiento más rentable es **liquidar la deuda de tarjetas de crédito**. Te ahorrarás intereses que superan con creces lo que ganarías ahorrando.`,
+      detailedBreakdown: breakdownLines,
+      metrics: [
+        { label: 'Bono Recibido', value: formattedBonus, tone: 'neutral' },
+        { label: 'Pago a Tarjeta', value: formatCLP(payAmount), tone: 'coral' },
+        { label: 'Ahorro de Intereses', value: '~30% anual', tone: 'emerald' },
+      ],
+    };
+  }
+
+  // Si no tiene deuda
+  breakdownLines.push(
+    `1. **Fondo de Emergencia / Ahorro Líquido:** Abonar el 100% (${formattedBonus}) en **${bestAccount ? bestAccount.name : 'tu mejor cuenta de ahorro'}**.`,
+    '2. Mantendrás la liquidez libre de riesgo ganando intereses compuestos desde el primer día.'
+  );
+
+  return {
+    intent: 'windfall_bonus',
+    title: `Estrategia para tu Bono de ${formattedBonus}`,
+    verdict: `Abonar 100% en ${bestAccount ? bestAccount.name : 'tu cuenta de ahorro'}`,
+    verdictTone: 'emerald',
+    recommendation: `Al no tener deudas en tarjetas, te recomendamos transferir los **${formattedBonus}** a **${bestAccount ? bestAccount.name : 'tu cuenta de ahorro'}**, donde generará intereses diarios sin riesgo.`,
+    detailedBreakdown: breakdownLines,
+    metrics: [
+      { label: 'Bono Recibido', value: formattedBonus, tone: 'emerald' },
+      { label: 'Cuenta Destino', value: bestAccount ? bestAccount.name : 'Ahorro', tone: 'neutral' },
+      { label: 'Tasa Anual', value: `${bestAccount?.interest_rate_annual || 5}%`, tone: 'emerald' },
+    ],
+  };
+}
+
 export function solveGreetingHelp(): QueryEngineResult {
   return {
     intent: 'greeting_help',
@@ -350,16 +1128,18 @@ export function solveGreetingHelp(): QueryEngineResult {
     recommendation:
       'Hola. Soy tu consultor financiero cuantitativo en FinanzApp. Mis respuestas se basan 100% en tus saldos bancarios y compromisos reales, sin suposiciones.',
     detailedBreakdown: [
+      '• Proyecciones futuras mes a mes (ej. "¿Cuánto podré ahorrar en abril o a fin de año?").',
       '• Cálculo en tiempo real de cuánto puedes ahorrar hoy sin descalzar fin de mes.',
       '• Simulación What-If para saber si puedes hacer una compra o gasto imprevisto.',
       '• Auditoría de tus cuentas de ahorro para depositar donde obtengas mayor rentabilidad.',
       '• Diagnóstico de pre-pago de tarjetas versus instrumentos de inversión libre de riesgo.',
+      '• Auditoría de tus sueldos, flujo de caja libre, deudas totales y suscripciones activas.',
     ],
     suggestedFollowUps: [
+      '¿Cuánto podré ahorrar en abril?',
       '¿Cuánto puedo ahorrar hoy de mi saldo?',
       '¿En qué cuenta me recomiendas invertir?',
-      '¿Puedo gastar $40.000 hoy?',
-      '¿Qué cuentas me faltan pagar este mes?',
+      '¿Cuál es mi sueldo y flujo de caja libre?',
     ],
   };
 }
@@ -498,23 +1278,17 @@ export function solveSafeToSave(
   recurringItems: RecurringItem[],
   period: string,
   dailyBudgetSuggested: number,
-  payments?: MonthlyPayment[]
+  payments?: MonthlyPayment[],
+  variableExpenses?: VariableExpense[]
 ): QueryEngineResult {
-  const checkingBalance = getCheckingLiquidBalance(accounts);
+  const checkingBalance = getCheckingLiquidBalance(accounts, variableExpenses, period);
   const pendingFixed = getPendingFixedExpenses(recurringItems, period, payments);
   const { remainingDays } = getRemainingDaysInCurrentMonth();
 
-  // Presupuesto diario base razonable (si dailyBudgetSuggested es positivo, o piso de $10.000/día)
   const dailyBurnTarget = Math.max(8000, dailyBudgetSuggested > 0 ? dailyBudgetSuggested : 10000);
   const requiredForDailyLiving = remainingDays * dailyBurnTarget;
-
-  // Colchón de seguridad ante emergencias del mes (15% del costo de vida diario)
   const safetyBuffer = Math.round(requiredForDailyLiving * 0.15);
-
-  // Fondos comprometidos que deben quedarse en la cuenta corriente
   const fundsToKeep = pendingFixed + requiredForDailyLiving + safetyBuffer;
-
-  // Monto exacto sugerido para transferir a ahorro hoy
   const safeToSaveAmount = Math.max(0, checkingBalance - fundsToKeep);
 
   if (safeToSaveAmount > 0) {
@@ -538,12 +1312,11 @@ export function solveSafeToSave(
       ],
       suggestedFollowUps: [
         '¿En qué cuenta me recomiendas invertir?',
-        '¿Qué cuentas me faltan pagar este mes?',
+        '¿Cuánto podré ahorrar en abril?',
       ],
     };
   }
 
-  // Si no alcanza para apartar ahorro sin descalzar
   const deficit = fundsToKeep - checkingBalance;
   return {
     intent: 'safe_to_save',
@@ -577,17 +1350,16 @@ export function solveWhatIfSpend(
   recurringItems: RecurringItem[],
   period: string,
   dailyBudgetSuggested: number,
-  payments?: MonthlyPayment[]
+  payments?: MonthlyPayment[],
+  variableExpenses?: VariableExpense[]
 ): QueryEngineResult {
-  const checkingBalance = getCheckingLiquidBalance(accounts);
+  const checkingBalance = getCheckingLiquidBalance(accounts, variableExpenses, period);
   const pendingFixed = getPendingFixedExpenses(recurringItems, period, payments);
   const { remainingDays } = getRemainingDaysInCurrentMonth();
 
-  // Margen libre actual antes del gasto
   const currentAvailableMargin = checkingBalance - pendingFixed;
   const currentDailyBudget = Math.max(0, Math.round(currentAvailableMargin / remainingDays));
 
-  // Simulación: Margen después del gasto propuesto
   const newAvailableMargin = currentAvailableMargin - amount;
   const newDailyBudget = Math.max(0, Math.round(newAvailableMargin / remainingDays));
 
@@ -620,7 +1392,6 @@ export function solveWhatIfSpend(
     };
   }
 
-  // Si queda en rango ajustado (< $8.000 / día)
   if (newDailyBudget < 8000) {
     return {
       intent: 'what_if_spend',
@@ -645,7 +1416,6 @@ export function solveWhatIfSpend(
     };
   }
 
-  // Viable y holgado (>= $8.000 / día)
   return {
     intent: 'what_if_spend',
     title: 'Simulación What-If: Gasto Imprevisto',
@@ -713,7 +1483,7 @@ export function solveSurvivalHealth(
     suggestedFollowUps: [
       '¿Cuánto puedo ahorrar hoy de mi saldo?',
       '¿En qué cuenta me recomiendas invertir?',
-      '¿En qué categoría se fue más dinero este mes?',
+      '¿Cuánto podré ahorrar en abril?',
     ],
   };
 }
@@ -865,7 +1635,7 @@ export function solveAmountOnly(amount: number): QueryEngineResult {
     suggestedFollowUps: [
       `¿Puedo gastar ${formatted} hoy?`,
       '¿Cuánto puedo ahorrar hoy de mi saldo?',
-      '¿Cuánto puedo gastar por día hasta fin de mes?',
+      '¿Cuánto podré ahorrar en abril?',
     ],
   };
 }
@@ -877,18 +1647,19 @@ export function solveFallback(): QueryEngineResult {
     verdict: 'Consulta no vinculada a tus finanzas',
     verdictTone: 'neutral',
     recommendation:
-      'Soy tu consultor financiero cuantitativo en FinanzApp. Mis respuestas están calibradas para optimizar tus cuentas bancarias, simular gastos, auditar tarjetas o proyectar tu ahorro. ¿Te gustaría consultar alguna de las siguientes opciones?',
+      'Soy tu consultor financiero cuantitativo en FinanzApp. Mis respuestas están calibradas para optimizar tus cuentas bancarias, simular gastos, proyectar ahorros en meses futuros o auditar tarjetas. ¿Te gustaría consultar alguna de las siguientes opciones?',
     detailedBreakdown: [
+      '• ¿Cuánto podré ahorrar en abril o a fin de año?',
       '• ¿Cuánto puedo ahorrar hoy de mi saldo bancario?',
       '• ¿Puedo hacer un gasto de $50.000 sin descalzarme?',
       '• ¿En qué cuenta me recomiendas invertir según mis tasas?',
-      '• ¿Qué cuentas obligatorias me faltan pagar este mes?',
+      '• ¿Cuál es mi sueldo y flujo libre de caja?',
     ],
     suggestedFollowUps: [
+      '¿Cuánto podré ahorrar en abril?',
       '¿Cuánto puedo ahorrar hoy de mi saldo?',
       '¿En qué cuenta me recomiendas invertir?',
-      '¿Puedo gastar $40.000 hoy?',
-      '¿Qué cuentas me faltan pagar este mes?',
+      '¿Cuál es mi sueldo y flujo de caja libre?',
     ],
   };
 }
@@ -905,10 +1676,11 @@ export function queryFinanzAI(
 
   const normalized = normalizeQueryText(query);
   const extractedAmount = extractAmountFromQuery(query);
-  const intent = classifyQueryIntent(normalized, extractedAmount);
+  const targetHorizon = extractTargetHorizonFromQuery(query, period);
+  const intent = classifyQueryIntent(normalized, extractedAmount, targetHorizon);
 
   // Calcular presupuesto diario actual
-  const checkingBalance = getCheckingLiquidBalance(accounts);
+  const checkingBalance = getCheckingLiquidBalance(accounts, context.variableExpenses, period);
   const pendingFixed = getPendingFixedExpenses(recurringItems, period, payments);
   const { remainingDays } = getRemainingDaysInCurrentMonth();
   const dailyBudget = Math.max(0, Math.round((checkingBalance - pendingFixed) / remainingDays));
@@ -917,6 +1689,30 @@ export function queryFinanzAI(
     case 'greeting_help':
       return solveGreetingHelp();
 
+    case 'future_savings_projection':
+      return solveFutureSavings(targetHorizon, context);
+
+    case 'goal_target_reach':
+      return solveGoalTargetReach(extractedAmount, context);
+
+    case 'income_cashflow':
+      return solveIncomeCashflow(context);
+
+    case 'credit_card_details':
+      return solveCreditCardDetails(context);
+
+    case 'total_debt_audit':
+      return solveTotalDebtAudit(context);
+
+    case 'subscriptions_audit':
+      return solveSubscriptionsAudit(context);
+
+    case 'shared_savings_partner':
+      return solveSharedSavings(context);
+
+    case 'windfall_bonus':
+      return solveWindfallBonus(extractedAmount, context);
+
     case 'invest_recommendation':
       return solveInvestRecommendation(accounts);
 
@@ -924,7 +1720,14 @@ export function queryFinanzAI(
       return solveCardVsSavings(accounts, recurringItems, period);
 
     case 'safe_to_save':
-      return solveSafeToSave(accounts, recurringItems, period, dailyBudget, payments);
+      return solveSafeToSave(
+        accounts,
+        recurringItems,
+        period,
+        dailyBudget,
+        payments,
+        context.variableExpenses
+      );
 
     case 'what_if_spend':
       return solveWhatIfSpend(
@@ -933,7 +1736,8 @@ export function queryFinanzAI(
         recurringItems,
         period,
         dailyBudget,
-        payments
+        payments,
+        context.variableExpenses
       );
 
     case 'survival_health':

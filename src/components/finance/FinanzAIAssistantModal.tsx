@@ -34,9 +34,19 @@ const ACCENTS = {
 
 const QUICK_PILLS = [
   {
+    id: 'future_save_april',
+    label: '📅 ¿Cuánto podré ahorrar en abril?',
+    query: '¿Cuánto podré ahorrar en abril?',
+  },
+  {
     id: 'safe_save',
     label: '💰 ¿Cuánto puedo ahorrar hoy?',
     query: '¿Cuánto puedo ahorrar hoy de mi saldo?',
+  },
+  {
+    id: 'income_cashflow',
+    label: '💵 ¿Cuál es mi sueldo y flujo libre?',
+    query: '¿Cuál es mi sueldo y cuánto me queda libre?',
   },
   {
     id: 'spend_50k',
@@ -54,9 +64,19 @@ const QUICK_PILLS = [
     query: '¿Me conviene pagar la tarjeta o ahorrar?',
   },
   {
+    id: 'card_limits',
+    label: '💳 ¿Cuál es el cupo de mis tarjetas?',
+    query: '¿Cuál es el cupo de mis tarjetas de crédito?',
+  },
+  {
     id: 'survival',
     label: '🛡️ ¿Cómo van mis finanzas?',
     query: '¿Cómo va mi salud financiera y fondo de emergencia?',
+  },
+  {
+    id: 'subscriptions',
+    label: '📱 ¿Cuánto gasto en suscripciones?',
+    query: '¿Cuánto gasto en suscripciones mensuales?',
   },
   {
     id: 'pending_bills',

@@ -362,43 +362,18 @@ export default function DashboardScreen() {
   const handleCreateVariableExpense = async (
     input: CreateVariableExpenseInput
   ) => {
-    await createVariableExpense(input);
+    const defaultChecking = accounts.find((a) => a.type === 'checking');
+    const payload: CreateVariableExpenseInput = {
+      ...input,
+      account_id: input.account_id || defaultChecking?.id || undefined,
+      deduct_from_balance: false,
+    };
+    await createVariableExpense(payload);
     await loadAllData();
   };
 
   const handleDeleteVariableExpense = async (id: string) => {
-    // 1. Identificar el gasto y el monto antes de eliminarlo
-    const expenseToDelete = variableExpenses.find((exp) => exp.id === id);
-
-    // 2. Ejecutar borrado en API
-    const res = await deleteVariableExpense(id);
-
-    // 3. Garantizar proactivamente la restitución del saldo en la cuenta corriente
-    // si el backend remoto no devolvió balance_restored: true
-    if (
-      !res?.balance_restored &&
-      expenseToDelete &&
-      expenseToDelete.amount > 0
-    ) {
-      const targetAccId =
-        expenseToDelete.account_id ||
-        accounts.find((a) => a.type === 'checking')?.id;
-
-      if (targetAccId) {
-        const targetAcc = accounts.find((a) => a.id === targetAccId);
-        if (targetAcc) {
-          try {
-            await updateAccount(targetAcc.id, {
-              current_balance: Math.round(targetAcc.current_balance + expenseToDelete.amount),
-            });
-          } catch (err) {
-            console.error('Error al restituir saldo al eliminar gasto variable:', err);
-          }
-        }
-      }
-    }
-
-    // 4. Recargar datos sincronizados
+    await deleteVariableExpense(id);
     await loadAllData();
   };
 
@@ -406,30 +381,7 @@ export default function DashboardScreen() {
     id: string,
     input: UpdateVariableExpenseInput
   ) => {
-    const existing = variableExpenses.find((exp) => exp.id === id);
     await updateVariableExpense(id, input);
-
-    // Si cambió el monto del gasto, sincronizar la diferencia en la cuenta bancaria
-    if (existing && input.amount !== undefined && existing.amount !== input.amount) {
-      const diff = Math.round(input.amount) - Math.round(existing.amount);
-      const targetAccId =
-        (input.account_id !== undefined ? input.account_id : existing.account_id) ||
-        accounts.find((a) => a.type === 'checking')?.id;
-
-      if (targetAccId) {
-        const targetAcc = accounts.find((a) => a.id === targetAccId);
-        if (targetAcc) {
-          try {
-            await updateAccount(targetAcc.id, {
-              current_balance: Math.round(targetAcc.current_balance - diff),
-            });
-          } catch (err) {
-            console.error('Error al sincronizar saldo al actualizar gasto variable:', err);
-          }
-        }
-      }
-    }
-
     await loadAllData();
   };
 
@@ -560,7 +512,15 @@ export default function DashboardScreen() {
               ) : null}
             </View>
 
-            <View style={styles.headerRightCol}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={[
+                styles.headerControlsScrollView,
+                !isDesktop && styles.headerControlsScrollViewMobile,
+              ]}
+              contentContainerStyle={styles.headerControlsScroll}
+            >
               {/* Selector de Periodo Mes a Mes */}
               <View style={styles.periodPicker}>
                 <Pressable
@@ -589,37 +549,39 @@ export default function DashboardScreen() {
               {/* Modo Privado / Ocultar Montos en Transporte Público */}
               <PrivacyToggleButton />
 
-              <View style={styles.headerQuickActions}>
-                <FinanzAITriggerButton variant="inline" label="FinanzAI" />
+              {/* Asistente FinanzAI */}
+              <FinanzAITriggerButton variant="inline" label="FinanzAI" />
 
-                <Pressable
-                  onPress={handleQuickExportCsv}
-                  disabled={exportingQuick}
-                  style={styles.quickHeaderBtn}
-                >
-                  <Download size={13} color="#34D399" />
-                  <Text style={styles.quickHeaderBtnTextEmerald}>
-                    {exportingQuick ? 'Exportando...' : 'CSV / Excel'}
-                  </Text>
-                </Pressable>
+              {/* Exportar CSV / Excel */}
+              <Pressable
+                onPress={handleQuickExportCsv}
+                disabled={exportingQuick}
+                style={styles.quickHeaderBtn}
+              >
+                <Download size={13} color="#34D399" />
+                <Text style={styles.quickHeaderBtnTextEmerald}>
+                  {exportingQuick ? 'Exportando...' : 'CSV / Excel'}
+                </Text>
+              </Pressable>
 
-                <Pressable
-                  onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
-                  style={styles.quickHeaderBtn}
-                >
-                  <Lightbulb size={13} color={colors.textPrimary} />
-                  <Text style={styles.quickHeaderBtnText}>Consejos</Text>
-                </Pressable>
+              {/* Consejos Inteligentes */}
+              <Pressable
+                onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
+                style={styles.quickHeaderBtn}
+              >
+                <Lightbulb size={13} color={colors.textPrimary} />
+                <Text style={styles.quickHeaderBtnText}>Consejos</Text>
+              </Pressable>
 
-                <Pressable
-                  onPress={() => router.push('/(main)/profile')}
-                  style={styles.quickHeaderBtn}
-                >
-                  <UserIcon size={13} color={colors.textPrimary} />
-                  <Text style={styles.quickHeaderBtnText}>Perfil</Text>
-                </Pressable>
-              </View>
-            </View>
+              {/* Perfil */}
+              <Pressable
+                onPress={() => router.push('/(main)/profile')}
+                style={styles.quickHeaderBtn}
+              >
+                <UserIcon size={13} color={colors.textPrimary} />
+                <Text style={styles.quickHeaderBtnText}>Perfil</Text>
+              </Pressable>
+            </ScrollView>
           </View>
 
           <View style={styles.divider} />
@@ -1086,6 +1048,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
+  headerControlsScrollView: {
+    maxWidth: '100%',
+    flexGrow: 0,
+  },
+  headerControlsScrollViewMobile: {
+    width: '100%',
+    marginTop: 8,
+  },
+  headerControlsScroll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 2,
+    paddingRight: 16,
+  },
   headerRightCol: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1102,6 +1079,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
     borderWidth: 1,
     borderColor: colors.glassBorder,
+    flexShrink: 0,
   },
   periodIconBtn: {
     padding: 5,
@@ -1144,6 +1122,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    flexShrink: 0,
   },
   quickHeaderBtnText: {
     color: colors.textPrimary,

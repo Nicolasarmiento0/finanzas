@@ -121,9 +121,20 @@ export function WalletSection({
     () => accounts.filter((a) => a.type === 'checking'),
     [accounts]
   );
-  const totalCheckingBalance = useMemo(
+  const totalCheckingBase = useMemo(
     () => checkingAccounts.reduce((sum, a) => sum + (a.current_balance || 0), 0),
     [checkingAccounts]
+  );
+
+  // Gastos variables registrados en el periodo
+  const periodExpenses = useMemo(
+    () => variableExpenses.filter((e) => e.period === period),
+    [variableExpenses, period]
+  );
+
+  const totalSpentInVariables = useMemo(
+    () => periodExpenses.reduce((sum, e) => sum + e.amount, 0),
+    [periodExpenses]
   );
 
   // Cálculos de presupuesto de sueldo libre:
@@ -171,26 +182,26 @@ export function WalletSection({
   );
 
   // Sueldo libre base disponible para gastos variables en el mes:
+  // Si el usuario tiene cuentas corrientes / vista registradas, asociamos directamente
+  // su Sueldo Libre Inicial a los Saldos Base Registrados en Cuentas (Hoy).
+  // Si no ha registrado cuentas corrientes, calculamos la fórmula teórica:
   // Sueldo Libre = Ingresos - Gastos Fijos - Tarjetas Facturadas - Ahorro
-  const initialFreeBudget = useMemo(
-    () =>
-      Math.max(
-        0,
-        monthlyIncome - monthlyFixedExpenses - totalCardDebt - monthlySavings
-      ),
-    [monthlyIncome, monthlyFixedExpenses, totalCardDebt, monthlySavings]
-  );
-
-  // Gastos variables registrados en el periodo
-  const periodExpenses = useMemo(
-    () => variableExpenses.filter((e) => e.period === period),
-    [variableExpenses, period]
-  );
-
-  const totalSpentInVariables = useMemo(
-    () => periodExpenses.reduce((sum, e) => sum + e.amount, 0),
-    [periodExpenses]
-  );
+  const initialFreeBudget = useMemo(() => {
+    if (checkingAccounts.length > 0) {
+      return totalCheckingBase;
+    }
+    return Math.max(
+      0,
+      monthlyIncome - monthlyFixedExpenses - totalCardDebt - monthlySavings
+    );
+  }, [
+    checkingAccounts.length,
+    totalCheckingBase,
+    monthlyIncome,
+    monthlyFixedExpenses,
+    totalCardDebt,
+    monthlySavings,
+  ]);
 
   const remainingFreeBudget = initialFreeBudget - totalSpentInVariables;
   const spentRatio =
@@ -404,7 +415,9 @@ export function WalletSection({
             </View>
             <Text style={styles.metricValue}>{formatCLP(initialFreeBudget)}</Text>
             <Text style={styles.metricSub}>
-              Post pagos fijos, tarjetas y ahorro
+              {checkingAccounts.length > 0
+                ? 'Asociado a tus cuentas vista / corriente'
+                : 'Post pagos fijos, tarjetas y ahorro'}
             </Text>
           </View>
 
@@ -559,7 +572,7 @@ export function WalletSection({
               Saldos Base Registrados en Cuentas (Hoy)
             </Text>
             <Text style={styles.sectionSubtitle}>
-              Total disponible en bancos: {formatCLP(totalCheckingBalance)}
+              Total disponible en bancos: {formatCLP(totalCheckingBase)}
             </Text>
           </View>
 
@@ -624,7 +637,7 @@ export function WalletSection({
           <View style={styles.inlineFormBox}>
             <Text style={styles.inlineFormTitle}>
               {editingCheckingId
-                ? 'Editar Saldo de Cuenta Corriente / Vista'
+                ? 'Editar Saldo Base de Cuenta Corriente / Vista'
                 : 'Nueva Cuenta Corriente / Vista'}
             </Text>
             <View style={[styles.formGrid, isMobile && styles.formGridMobile]}>
@@ -638,7 +651,7 @@ export function WalletSection({
               </View>
               <View style={styles.formCol}>
                 <GlassInput
-                  label="Saldo Actual Disponible (CLP)"
+                  label="Saldo Base Registrado (CLP)"
                   placeholder="Ej: 150000"
                   keyboardType="numeric"
                   value={checkingBalance}
@@ -656,7 +669,7 @@ export function WalletSection({
                 }}
               />
               <TeslaButton
-                title={editingCheckingId ? 'Guardar Saldo' : 'Crear Cuenta'}
+                title={editingCheckingId ? 'Guardar Saldo Base' : 'Crear Cuenta'}
                 onPress={handleSaveChecking}
                 loading={submittingChecking}
               />
