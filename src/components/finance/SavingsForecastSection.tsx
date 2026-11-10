@@ -200,6 +200,11 @@ export function SavingsForecastSection({
     [recurringItems, period, monthsAhead]
   );
 
+  const totalExpiringAmount = useMemo(
+    () => expiringCommitments.reduce((sum, item) => sum + (item.amount || 0), 0),
+    [expiringCommitments]
+  );
+
   // Fecha base a partir de `period` (YYYY-MM)
   const baseDate = useMemo(() => {
     const [y, m] = period.split('-').map(Number);
@@ -1733,12 +1738,23 @@ export function SavingsForecastSection({
           {/* Impacto de Gastos / Préstamos que Expiran en el Horizonte */}
           {expiringCommitments.length > 0 ? (
             <GlassCard>
-              <Text style={styles.expiringTitle}>
-                IMPULSO AUTOMÁTICO DE SUPERÁVIT · COMPROMISOS QUE FINALIZAN EN ESTE HORIZONTE
-              </Text>
-              <Text style={styles.expiringSubtitle}>
-                Al vencer estos gastos temporales o préstamos, el motor incrementa automáticamente el flujo libre mensual para los meses siguientes:
-              </Text>
+              <View style={styles.expiringHeaderRow}>
+                <View style={styles.expiringHeaderLeft}>
+                  <Text style={styles.expiringTitle}>
+                    IMPULSO AUTOMÁTICO DE SUPERÁVIT · COMPROMISOS QUE FINALIZAN EN ESTE HORIZONTE
+                  </Text>
+                  <Text style={styles.expiringSubtitle}>
+                    Al vencer estos gastos temporales o préstamos, el motor incrementa automáticamente el flujo libre mensual para los meses siguientes:
+                  </Text>
+                </View>
+                <View style={styles.expiringTotalBadge}>
+                  <Text style={styles.expiringTotalBadgeLabel}>TOTAL LIBERADO</Text>
+                  <Text style={styles.expiringTotalBadgeValue}>
+                    +{formatCLP(totalExpiringAmount)} / mes
+                  </Text>
+                </View>
+              </View>
+
               <View style={styles.expiringList}>
                 {expiringCommitments.map((exp, idx) => (
                   <View key={`${exp.title}-${idx}`} style={styles.expiringRow}>
@@ -1755,6 +1771,16 @@ export function SavingsForecastSection({
                     </View>
                   </View>
                 ))}
+
+                <View style={styles.expiringTotalFooter}>
+                  <Text style={styles.expiringTotalFooterLabel}>
+                    Total liberado al término del horizonte ({expiringCommitments.length}{' '}
+                    {expiringCommitments.length === 1 ? 'compromiso' : 'compromisos'}):
+                  </Text>
+                  <Text style={styles.expiringTotalFooterValue}>
+                    +{formatCLP(totalExpiringAmount)} / mes
+                  </Text>
+                </View>
               </View>
             </GlassCard>
           ) : null}
@@ -2775,6 +2801,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
+  expiringHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginBottom: 8,
+  },
+  expiringHeaderLeft: {
+    flex: 1,
+    minWidth: 200,
+  },
+  expiringTotalBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: ACCENT_GREEN_BORDER,
+    backgroundColor: ACCENT_GREEN_BG,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    alignSelf: 'flex-start',
+  },
+  expiringTotalBadgeLabel: {
+    color: ACCENT_GREEN,
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  expiringTotalBadgeValue: {
+    color: ACCENT_GREEN,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 1,
+  },
   expiringTitle: {
     color: colors.textSecondary,
     fontSize: 10,
@@ -2825,6 +2886,27 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 11,
     fontWeight: '700',
+  },
+  expiringTotalFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+    paddingTop: 10,
+    borderTopWidth: 1.5,
+    borderTopColor: ACCENT_GREEN_BORDER,
+  },
+  expiringTotalFooterLabel: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  expiringTotalFooterValue: {
+    color: ACCENT_GREEN,
+    fontSize: 14,
+    fontWeight: '800',
   },
   pressed: {
     opacity: 0.75,

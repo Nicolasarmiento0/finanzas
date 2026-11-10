@@ -879,12 +879,20 @@ export function calculateProjectedPosition(
   const creditCardAccounts = accounts.filter((a) => a.type === 'credit_card');
   const loanAccounts = accounts.filter((a) => a.type === 'loan');
 
-  // Saldos base actuales hoy (basePeriod)
-  const baseChecking = checkingAccounts.reduce(
+  // Saldos base actuales hoy (basePeriod) y descuento de gastos variables del periodo
+  const baseCheckingRaw = checkingAccounts.reduce(
     (sum, a) => sum + (a.current_balance || 0),
     0
   );
-  let currentChecking = baseChecking;
+  const baseVariableSpent = (options?.variableExpenses || [])
+    .filter((exp) => (exp.period || exp.date?.slice(0, 7)) === basePeriod)
+    .reduce((sum, exp) => sum + exp.amount, 0);
+  const targetVariableSpent = (options?.variableExpenses || [])
+    .filter((exp) => (exp.period || exp.date?.slice(0, 7)) === targetPeriod)
+    .reduce((sum, exp) => sum + exp.amount, 0);
+
+  const baseChecking = Math.max(0, baseCheckingRaw - baseVariableSpent);
+  let currentChecking = Math.max(0, baseCheckingRaw - targetVariableSpent);
 
   // Estado mutable de cuentas de ahorro personales
   const savingsState = personalSavingsAccounts.map((acc) => {

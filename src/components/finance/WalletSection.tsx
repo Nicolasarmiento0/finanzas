@@ -128,13 +128,60 @@ export function WalletSection({
 
   // Gastos variables registrados en el periodo
   const periodExpenses = useMemo(
-    () => variableExpenses.filter((e) => e.period === period),
+    () =>
+      variableExpenses.filter(
+        (e) => (e.period || e.date?.slice(0, 7)) === period
+      ),
     [variableExpenses, period]
   );
 
   const totalSpentInVariables = useMemo(
     () => periodExpenses.reduce((sum, e) => sum + e.amount, 0),
     [periodExpenses]
+  );
+
+  // Saldos disponibles en cada cuenta tras descontar los gastos variables del periodo
+  const checkingAccountBalances = useMemo(() => {
+    const validIds = new Set(checkingAccounts.map((a) => a.id));
+    const fallbackId = checkingAccounts[0]?.id;
+    const spentByAcc = new Map<string, number>();
+
+    for (const exp of periodExpenses) {
+      const targetId =
+        exp.account_id && validIds.has(exp.account_id)
+          ? exp.account_id
+          : fallbackId;
+      if (targetId) {
+        spentByAcc.set(targetId, (spentByAcc.get(targetId) || 0) + exp.amount);
+      }
+    }
+
+    return checkingAccounts.map((acc) => {
+      const baseBalance = acc.current_balance || 0;
+      const spentInPeriod = spentByAcc.get(acc.id) || 0;
+      const availableBalance = baseBalance - spentInPeriod;
+      return {
+        ...acc,
+        baseBalance,
+        spentInPeriod,
+        availableBalance,
+      };
+    });
+  }, [checkingAccounts, periodExpenses]);
+
+  const totalCheckingAvailable = useMemo(
+    () =>
+      checkingAccountBalances.reduce((sum, a) => sum + a.availableBalance, 0),
+    [checkingAccountBalances]
+  );
+
+  const checkingAccountsForQuickLog = useMemo(
+    () =>
+      checkingAccountBalances.map((acc) => ({
+        ...acc,
+        current_balance: acc.availableBalance,
+      })),
+    [checkingAccountBalances]
   );
 
   // Cálculos de presupuesto de sueldo libre:
@@ -572,7 +619,10 @@ export function WalletSection({
               Saldos Base Registrados en Cuentas (Hoy)
             </Text>
             <Text style={styles.sectionSubtitle}>
-              Total disponible en bancos: {formatCLP(totalCheckingBase)}
+              Total disponible en bancos: {formatCLP(totalCheckingAvailable)}
+              {totalSpentInVariables > 0
+                ? ` · Saldo base inicial: ${formatCLP(totalCheckingBase)}`
+                : ''}
             </Text>
           </View>
 
@@ -586,7 +636,7 @@ export function WalletSection({
         </View>
 
         {/* Lista de Cuentas */}
-        {checkingAccounts.length === 0 ? (
+        {checkingAccountBalances.length === 0 ? (
           <View style={styles.emptyAccountsBox}>
             <Text style={styles.emptyAccountsText}>
               No tienes cuentas corrientes o vista ingresadas. Agrega una cuenta para administrar tu dinero diario.
@@ -594,7 +644,7 @@ export function WalletSection({
           </View>
         ) : (
           <View style={styles.accountsGrid}>
-            {checkingAccounts.map((acc) => (
+            {checkingAccountBalances.map((acc) => (
               <View
                 key={acc.id}
                 style={[styles.accountCard, isMobile && styles.accountCardMobile]}
@@ -608,8 +658,20 @@ export function WalletSection({
                   </Text>
                 </View>
 
-                <Text style={styles.accountCardBalance}>
-                  {formatCLP(acc.current_balance)}
+                <Text
+                  style={[
+                    styles.accountCardBalance,
+                    acc.availableBalance < 0 && { color: '#EF4444' },
+                  ]}
+                >
+                  {formatCLP(acc.availableBalance)}
+                </Text>
+
+                <Text style={styles.accountCardMeta}>
+                  Saldo base: {formatCLP(acc.baseBalance)}
+                  {acc.spentInPeriod > 0
+                    ? ` · Gastos variables: -${formatCLP(acc.spentInPeriod)}`
+                    : ''}
                 </Text>
 
                 <View style={styles.accountCardActions}>
@@ -618,7 +680,7 @@ export function WalletSection({
                     style={styles.accountActionBtn}
                   >
                     <Pencil size={12} color={colors.textSecondary} />
-                    <Text style={styles.accountActionBtnText}>Editar Saldo</Text>
+                    <Text style={styles.accountActionBtnText}>Editar Saldo Base</Text>
                   </Pressable>
                   <Pressable
                     onPress={() => onDeleteAccount(acc.id)}
@@ -707,7 +769,7 @@ export function WalletSection({
         {/* Catálogo de Acciones Rápidas (Micro-Gastos Chilenos con Edición al Vuelo) */}
         <QuickExpenseShortcuts
           accounts={accounts}
-          checkingAccounts={checkingAccounts}
+          checkingAccounts={checkingAccountsForQuickLog}
           period={period}
           onQuickLog={onCreateVariableExpense}
           isMobile={isMobile}
@@ -1465,6 +1527,12 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
     letterSpacing: -0.3,
     lineHeight: 22,
+  },
+  accountCardMeta: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '500',
+    lineHeight: 15,
   },
   accountCardActions: {
     flexDirection: 'row',

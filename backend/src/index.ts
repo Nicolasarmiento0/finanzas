@@ -1379,6 +1379,7 @@ app.post('/variable-expenses', async (c) => {
     .run();
 
   // Si se solicita descontar del saldo disponible de la cuenta:
+  let balanceDeducted = false;
   if (body.deduct_from_balance && accountId) {
     await c.env.DB.prepare(
       `UPDATE accounts
@@ -1387,6 +1388,7 @@ app.post('/variable-expenses', async (c) => {
     )
       .bind(Math.round(amount), accountId, user.id)
       .run();
+    balanceDeducted = true;
   }
 
   const created = await c.env.DB.prepare(
@@ -1398,7 +1400,7 @@ app.post('/variable-expenses', async (c) => {
     .bind(id)
     .first<VariableExpenseRow>();
 
-  return c.json({ expense: created }, 201);
+  return c.json({ expense: created, balance_deducted: balanceDeducted }, 201);
 });
 
 app.put('/variable-expenses/:id', async (c) => {
@@ -1441,44 +1443,6 @@ app.put('/variable-expenses/:id', async (c) => {
   const accountId = body.account_id !== undefined ? (body.account_id ? body.account_id.trim() : null) : existing.account_id;
   const notesStr = body.notes !== undefined ? (body.notes ? body.notes.trim() : null) : existing.notes;
 
-  const oldAmount = Math.round(Number(existing.amount) || 0);
-  const newAmount = Math.round(amount);
-  const oldAccountId = existing.account_id;
-  const newAccountId = accountId;
-
-  // Ajustar saldos si cambió el monto o la cuenta asociada
-  if (oldAccountId && newAccountId && oldAccountId === newAccountId) {
-    const diff = newAmount - oldAmount;
-    if (diff !== 0) {
-      await c.env.DB.prepare(
-        `UPDATE accounts
-         SET current_balance = current_balance - ?
-         WHERE id = ? AND user_id = ?`
-      )
-        .bind(diff, oldAccountId, user.id)
-        .run();
-    }
-  } else {
-    if (oldAccountId && oldAmount > 0) {
-      await c.env.DB.prepare(
-        `UPDATE accounts
-         SET current_balance = current_balance + ?
-         WHERE id = ? AND user_id = ?`
-      )
-        .bind(oldAmount, oldAccountId, user.id)
-        .run();
-    }
-    if (newAccountId && newAmount > 0) {
-      await c.env.DB.prepare(
-        `UPDATE accounts
-         SET current_balance = current_balance - ?
-         WHERE id = ? AND user_id = ?`
-      )
-        .bind(newAmount, newAccountId, user.id)
-        .run();
-    }
-  }
-
   await c.env.DB.prepare(
     `UPDATE variable_expenses
      SET title = ?, amount = ?, category = ?, period = ?, date = ?, account_id = ?, notes = ?
@@ -1516,26 +1480,13 @@ app.delete('/variable-expenses/:id', async (c) => {
     return c.json({ error: 'Gasto variable no encontrado' }, 404);
   }
 
-  // Si el gasto estaba vinculado a una cuenta financiera, restituir el saldo disponible
-  let balanceRestored = false;
-  if (existing.account_id && Number(existing.amount) > 0) {
-    await c.env.DB.prepare(
-      `UPDATE accounts
-       SET current_balance = current_balance + ?
-       WHERE id = ? AND user_id = ?`
-    )
-      .bind(Math.round(Number(existing.amount)), existing.account_id, user.id)
-      .run();
-    balanceRestored = true;
-  }
-
   await c.env.DB.prepare(`DELETE FROM variable_expenses WHERE id = ?`)
     .bind(id)
     .run();
 
   return c.json({
     success: true,
-    balance_restored: balanceRestored,
+    balance_restored: false,
     account_id: existing.account_id,
     restored_amount: existing.amount,
   });

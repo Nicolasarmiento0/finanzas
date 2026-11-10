@@ -373,7 +373,26 @@ export default function DashboardScreen() {
   };
 
   const handleDeleteVariableExpense = async (id: string) => {
-    await deleteVariableExpense(id);
+    const expenseToDelete = variableExpenses.find((exp) => exp.id === id);
+    const targetAcc = expenseToDelete?.account_id
+      ? accounts.find((a) => a.id === expenseToDelete.account_id)
+      : undefined;
+    const preservedBaseBalance = targetAcc?.current_balance;
+
+    const res = await deleteVariableExpense(id);
+
+    // Si el Worker remoto alteró el saldo base de la cuenta al eliminar el gasto,
+    // restaurar el Saldo Base original para que el Sueldo Libre Inicial permanezca intacto.
+    if (res?.balance_restored && targetAcc && preservedBaseBalance !== undefined) {
+      try {
+        await updateAccount(targetAcc.id, {
+          current_balance: preservedBaseBalance,
+        });
+      } catch (err) {
+        console.error('Error al preservar saldo base de cuenta:', err);
+      }
+    }
+
     await loadAllData();
   };
 
@@ -381,7 +400,27 @@ export default function DashboardScreen() {
     id: string,
     input: UpdateVariableExpenseInput
   ) => {
+    const existing = variableExpenses.find((exp) => exp.id === id);
+    const affectedIds = new Set<string>();
+    if (existing?.account_id) affectedIds.add(existing.account_id);
+    if (input.account_id) affectedIds.add(input.account_id);
+    const preservedBalances = new Map<string, number>();
+    for (const accId of affectedIds) {
+      const acc = accounts.find((a) => a.id === accId);
+      if (acc) preservedBalances.set(accId, acc.current_balance);
+    }
+
     await updateVariableExpense(id, input);
+
+    // Preservar intacto el Saldo Base de las cuentas afectadas
+    for (const [accId, baseBal] of preservedBalances.entries()) {
+      try {
+        await updateAccount(accId, { current_balance: baseBal });
+      } catch (err) {
+        console.error('Error al preservar saldo base tras editar gasto:', err);
+      }
+    }
+
     await loadAllData();
   };
 
