@@ -200,10 +200,39 @@ export function SavingsForecastSection({
     [recurringItems, period, monthsAhead]
   );
 
-  const totalExpiringAmount = useMemo(
-    () => expiringCommitments.reduce((sum, item) => sum + (item.amount || 0), 0),
-    [expiringCommitments]
-  );
+  // Agrupar compromisos que finalizan mes a mes (sin sumar distintos meses entre sí)
+  const expiringByMonth = useMemo(() => {
+    const groupsMap = new Map<
+      string,
+      {
+        endPeriod: string;
+        endLabel: string;
+        fullMonthLabel: string;
+        items: typeof expiringCommitments;
+        monthTotal: number;
+      }
+    >();
+
+    for (const item of expiringCommitments) {
+      const existing = groupsMap.get(item.endPeriod);
+      if (existing) {
+        existing.items.push(item);
+        existing.monthTotal += item.amount || 0;
+      } else {
+        groupsMap.set(item.endPeriod, {
+          endPeriod: item.endPeriod,
+          endLabel: item.endLabel,
+          fullMonthLabel: formatPeriodFull(item.endPeriod),
+          items: [item],
+          monthTotal: item.amount || 0,
+        });
+      }
+    }
+
+    return Array.from(groupsMap.values()).sort((a, b) =>
+      a.endPeriod.localeCompare(b.endPeriod)
+    );
+  }, [expiringCommitments]);
 
   // Fecha base a partir de `period` (YYYY-MM)
   const baseDate = useMemo(() => {
@@ -1735,52 +1764,84 @@ export function SavingsForecastSection({
             ) : null}
           </GlassCard>
 
-          {/* Impacto de Gastos / Préstamos que Expiran en el Horizonte */}
-          {expiringCommitments.length > 0 ? (
+          {/* Impacto de Gastos / Préstamos que Expiran en el Horizonte (Dividido Mes a Mes) */}
+          {expiringByMonth.length > 0 ? (
             <GlassCard>
               <View style={styles.expiringHeaderRow}>
                 <View style={styles.expiringHeaderLeft}>
                   <Text style={styles.expiringTitle}>
-                    IMPULSO AUTOMÁTICO DE SUPERÁVIT · COMPROMISOS QUE FINALIZAN EN ESTE HORIZONTE
+                    IMPULSO AUTOMÁTICO DE SUPERÁVIT · DESGLOSE MES A MES DE COMPROMISOS QUE FINALIZAN
                   </Text>
                   <Text style={styles.expiringSubtitle}>
-                    Al vencer estos gastos temporales o préstamos, el motor incrementa automáticamente el flujo libre mensual para los meses siguientes:
-                  </Text>
-                </View>
-                <View style={styles.expiringTotalBadge}>
-                  <Text style={styles.expiringTotalBadgeLabel}>TOTAL LIBERADO</Text>
-                  <Text style={styles.expiringTotalBadgeValue}>
-                    +{formatCLP(totalExpiringAmount)} / mes
+                    Al vencer estos gastos temporales o préstamos, este es el detalle mes a mes de cuánto dejarás de pagar en cada fecha:
                   </Text>
                 </View>
               </View>
 
-              <View style={styles.expiringList}>
-                {expiringCommitments.map((exp, idx) => (
-                  <View key={`${exp.title}-${idx}`} style={styles.expiringRow}>
-                    <View style={styles.expiringLeft}>
-                      <Text style={styles.expiringItemName}>{exp.title}</Text>
-                      <Text style={styles.expiringItemDate}>
-                        Último pago en {exp.endLabel}
-                      </Text>
+              <View style={styles.expiringMonthsContainer}>
+                {expiringByMonth.map((group) => (
+                  <View key={group.endPeriod} style={styles.expiringMonthBlock}>
+                    <View style={styles.expiringMonthHeader}>
+                      <View style={styles.expiringMonthTitleRow}>
+                        <Calendar size={14} color={ACCENT_GREEN} />
+                        <View>
+                          <Text style={styles.expiringMonthTitle}>
+                            {group.fullMonthLabel}
+                          </Text>
+                          <Text style={styles.expiringMonthCount}>
+                            {group.items.length}{' '}
+                            {group.items.length === 1
+                              ? 'compromiso finaliza este mes'
+                              : 'compromisos finalizan este mes'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.expiringTotalBadge}>
+                        <Text style={styles.expiringTotalBadgeLabel}>
+                          DEJAS DE PAGAR EN {group.endLabel.toUpperCase()}
+                        </Text>
+                        <Text style={styles.expiringTotalBadgeValue}>
+                          +{formatCLP(group.monthTotal)} / mes
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.expiringBadge}>
-                      <Text style={styles.expiringBadgeText}>
-                        +{formatCLP(exp.amount)} / mes libres
-                      </Text>
+
+                    <View style={styles.expiringList}>
+                      {group.items.map((exp, idx) => (
+                        <View
+                          key={`${group.endPeriod}-${exp.title}-${idx}`}
+                          style={styles.expiringRow}
+                        >
+                          <View style={styles.expiringLeft}>
+                            <Text style={styles.expiringItemName}>
+                              {exp.title}
+                            </Text>
+                            <Text style={styles.expiringItemDate}>
+                              Último pago en {exp.endLabel}
+                            </Text>
+                          </View>
+                          <View style={styles.expiringBadge}>
+                            <Text style={styles.expiringBadgeText}>
+                              +{formatCLP(exp.amount)} / mes libres
+                            </Text>
+                          </View>
+                        </View>
+                      ))}
+
+                      {group.items.length > 1 ? (
+                        <View style={styles.expiringMonthFooter}>
+                          <Text style={styles.expiringMonthFooterLabel}>
+                            Total que dejas de pagar en {group.fullMonthLabel}:
+                          </Text>
+                          <Text style={styles.expiringMonthFooterValue}>
+                            +{formatCLP(group.monthTotal)} / mes
+                          </Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 ))}
-
-                <View style={styles.expiringTotalFooter}>
-                  <Text style={styles.expiringTotalFooterLabel}>
-                    Total liberado al término del horizonte ({expiringCommitments.length}{' '}
-                    {expiringCommitments.length === 1 ? 'compromiso' : 'compromisos'}):
-                  </Text>
-                  <Text style={styles.expiringTotalFooterValue}>
-                    +{formatCLP(totalExpiringAmount)} / mes
-                  </Text>
-                </View>
               </View>
             </GlassCard>
           ) : null}
@@ -2846,7 +2907,43 @@ const styles = StyleSheet.create({
   expiringSubtitle: {
     color: colors.textSecondary,
     fontSize: 12,
-    marginBottom: 12,
+    marginBottom: 8,
+  },
+  expiringMonthsContainer: {
+    gap: 14,
+  },
+  expiringMonthBlock: {
+    padding: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    gap: 10,
+  },
+  expiringMonthHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  expiringMonthTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 160,
+  },
+  expiringMonthTitle: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+  },
+  expiringMonthCount: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginTop: 1,
   },
   expiringList: {
     gap: 8,
@@ -2887,26 +2984,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
-  expiringTotalFooter: {
+  expiringMonthFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 8,
-    marginTop: 8,
-    paddingTop: 10,
-    borderTopWidth: 1.5,
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
     borderTopColor: ACCENT_GREEN_BORDER,
   },
-  expiringTotalFooterLabel: {
-    color: colors.textPrimary,
-    fontSize: 12,
-    fontWeight: '700',
+  expiringMonthFooterLabel: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    fontWeight: '600',
   },
-  expiringTotalFooterValue: {
+  expiringMonthFooterValue: {
     color: ACCENT_GREEN,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '700',
   },
   pressed: {
     opacity: 0.75,
