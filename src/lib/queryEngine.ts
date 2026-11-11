@@ -1,12 +1,20 @@
-import { Account, MonthlyPayment, RecurringItem, VariableExpense } from '@/lib/api';
+import {
+  Account,
+  FuturePurchase,
+  MonthlyPayment,
+  RecurringItem,
+  VariableExpense,
+} from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
 import {
   accountToSavingsAccount,
   buildMonthlySurplusList,
   calculateConsolidatedForecast,
   diffPeriodsInMonths,
+  evaluateFuturePurchase,
   formatPeriodFull,
   getCurrentPeriod,
+  getDebtReleaseMilestones,
   getExpiringExpensesInHorizon,
   isItemActiveInMonth,
   shiftPeriod,
@@ -34,6 +42,7 @@ export type QueryIntent =
   | 'subscriptions_audit'
   | 'shared_savings_partner'
   | 'windfall_bonus'
+  | 'wishlist_evaluation'
   | 'amount_only'
   | 'fallback';
 
@@ -62,6 +71,7 @@ export interface QueryContextData {
   recurringItems: RecurringItem[];
   variableExpenses: VariableExpense[];
   payments?: MonthlyPayment[];
+  futurePurchases?: FuturePurchase[];
   period?: string;
   report?: FinancialIntelligenceReport;
 }
@@ -259,10 +269,26 @@ export function classifyQueryIntent(
     'empezar',
     'inicio',
   ];
-  if (
-    GREETING_KEYWORDS.some((kw) => normalized === kw || normalized.startsWith(kw + ' ') || normalized.endsWith(' ' + kw))
-  ) {
+  if (GREETING_KEYWORDS.some((kw) => normalized === kw || normalized.startsWith(kw + ' ') || normalized.endsWith(' ' + kw))) {
     return 'greeting_help';
+  }
+
+  // 0. Evaluación de Lista de Deseos / Futuras Compras Posibles
+  const WISHLIST_KEYWORDS = [
+    'futuras compras',
+    'futura compra',
+    'compras futuras',
+    'lista de deseos',
+    'mis deseos',
+    'plan optimo para comprar',
+    'que de mis futuras compras',
+    'que puedo comprar de mi lista',
+    'proyectos de compra',
+    'wishlist',
+    'simulador de compras',
+  ];
+  if (WISHLIST_KEYWORDS.some((kw) => normalized.includes(kw))) {
+    return 'wishlist_evaluation';
   }
 
   // 1. Proyecciones Futuras de Ahorro en Meses Específicos (ej. "¿cuánto podré ahorrar en abril?", "cuánto ahorraré en 6 meses")
@@ -1640,6 +1666,149 @@ export function solveAmountOnly(amount: number): QueryEngineResult {
   };
 }
 
+export function solveWishlistEvaluation(
+  context: QueryContextData
+): QueryEngineResult {
+  const {
+    accounts,
+    recurringItems,
+    variableExpenses = [],
+    payments = [],
+    futurePurchases = [],
+  } = context;
+  const period = context.period || getCurrentPeriod();
+  const activeWishlist = futurePurchases.filter((fp) => fp.status !== 'purchased');
+
+  if (activeWishlist.length === 0) {
+    return {
+      intent: 'wishlist_evaluation',
+      title: 'Planificador de Futuras Compras y Deseos',
+      verdict: 'Tu lista de futuras compras está vacía',
+      verdictTone: 'blue',
+      recommendation:
+        'Aún no tienes productos, ropa, gadgets o nuevas suscripciones registradas en la pestaña **🛍️ Compras Futuras**. Agrégalos allí para que calcule qué puedes comprar hoy al contado, qué te conviene en cuotas sin interés y cuál es el mes exacto donde se liberan tus deudas.',
+      detailedBreakdown: [
+        '• Dirígete a la pestaña "Compras Futuras" en tu consola.',
+        '• Usa las plantillas de 1 toque (Ropa, Tecnología, Hogar, Suscripción) o carga los 3 ejemplos de simulación.',
+      ],
+      suggestedFollowUps: [
+        '¿Cuánto puedo ahorrar hoy de mi saldo?',
+        '¿Cuál es mi sueldo y cuánto me queda libre?',
+      ],
+    };
+  }
+
+  const evaluations = activeWishlist.map((item) => ({
+    item,
+    eval: evaluateFuturePurchase(item, {
+      period,
+      accounts,
+      recurringItems,
+      variableExpenses,
+      payments,
+    }),
+  }));
+
+  const viableToday = evaluations.filter((e) => e.eval.verdict === 'viable_today');
+  const viablePlanned = evaluations.filter((e) => e.eval.verdict === 'viable_planned');
+  const postponeList = evaluations.filter((e) => e.eval.verdict === 'postpone');
+
+  const totalWishlistAmount = activeWishlist.reduce(
+    (sum, i) => sum + (i.amount || 0),
+    0
+  );
+  const milestones = getDebtReleaseMilestones(recurringItems, period, 18);
+  const firstMilestone = milestones[0] || null;
+
+  const breakdown: string[] = [];
+
+  for (const entry of viableToday) {
+    breakdown.push(
+      `🟢 COMPRAR HOY · ${entry.item.title} (${formatCLP(entry.item.amount)}): ${entry.eval.verdictHeadline}.`
+    );
+  }
+  for (const entry of viablePlanned) {
+    breakdown.push(
+      `🟡 PLANIFICAR / CUOTAS · ${entry.item.title} (${formatCLP(entry.item.amount)}): ${entry.eval.verdictHeadline}.`
+    );
+  }
+  for (const entry of postponeList) {
+    breakdown.push(
+      `🔴 POSPONER · ${entry.item.title} (${formatCLP(entry.item.amount)}): ${entry.eval.verdictHeadline}.`
+    );
+  }
+
+  if (firstMilestone) {
+    breakdown.push(
+      `💡 Ventana de Liquidez: En ${firstMilestone.releaseLabel} liberas +${formatCLP(
+        firstMilestone.releasedMonthlyAmount
+      )}/mes tras finalizar ${firstMilestone.itemTitles.slice(0, 2).join(', ')}.`
+    );
+  }
+
+  const tone: 'emerald' | 'amber' | 'coral' =
+    viableToday.length > 0
+      ? 'emerald'
+      : viablePlanned.length > 0
+      ? 'amber'
+      : 'coral';
+
+  return {
+    intent: 'wishlist_evaluation',
+    title: 'Plan Óptimo de Futuras Compras',
+    verdict:
+      viableToday.length > 0
+        ? `✅ ${viableToday.length} de ${activeWishlist.length} deseos son viables hoy`
+        : viablePlanned.length > 0
+        ? `🟡 ${viablePlanned.length} deseos viables en cuotas o mes de liberación`
+        : '🔴 Conviene posponer compras hasta liberar flujo',
+    verdictTone: tone,
+    recommendation:
+      viableToday.length > 0
+        ? `Tienes **${viableToday.length} ${
+            viableToday.length === 1 ? 'ítem con Luz Verde' : 'ítems con Luz Verde'
+          }** (${viableToday.map((v) => v.item.title).join(', ')}) que puedes adquirir este mes sin descalzar tus gastos fijos ni tu presupuesto diario.${
+            firstMilestone
+              ? ` Los ítems de mayor valor prográmalos para **${firstMilestone.releaseLabel}**, cuando liberas **+${formatCLP(
+                  firstMilestone.releasedMonthlyAmount
+                )}/mes**.`
+              : ''
+          }`
+        : `Al contado hoy reducirías demasiado tu liquidez diaria. Tu estrategia óptima es usar **cuotas sin interés** en los ítems planificados${
+            firstMilestone
+              ? ` o esperar a **${firstMilestone.releaseLabel}** cuando dejas de pagar **+${formatCLP(
+                  firstMilestone.releasedMonthlyAmount
+                )}/mes**`
+              : ''
+          }.`,
+    detailedBreakdown: breakdown,
+    metrics: [
+      {
+        label: 'Deseos en Lista',
+        value: `${activeWishlist.length} (${formatCLP(totalWishlistAmount)})`,
+        tone: 'neutral',
+      },
+      {
+        label: 'Viables Hoy (Verde)',
+        value: `${viableToday.length}`,
+        tone: viableToday.length > 0 ? 'emerald' : 'neutral',
+      },
+      {
+        label: 'Próxima Liberación',
+        value: firstMilestone
+          ? `+${formatCLP(firstMilestone.releasedMonthlyAmount)} (${firstMilestone.releaseLabel})`
+          : 'Sin vencimientos',
+        tone: firstMilestone ? 'blue' : 'neutral',
+      },
+    ],
+    suggestedFollowUps: [
+      '¿Cuánto puedo ahorrar hoy de mi saldo?',
+      '¿Cuál es el cupo de mis tarjetas de crédito?',
+      '¿Cuánto gasto en suscripciones mensuales?',
+    ],
+  };
+}
+
 export function solveFallback(): QueryEngineResult {
   return {
     intent: 'fallback',
@@ -1712,6 +1881,9 @@ export function queryFinanzAI(
 
     case 'windfall_bonus':
       return solveWindfallBonus(extractedAmount, context);
+
+    case 'wishlist_evaluation':
+      return solveWishlistEvaluation(context);
 
     case 'invest_recommendation':
       return solveInvestRecommendation(accounts);

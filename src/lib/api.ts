@@ -1,4 +1,4 @@
-import { clearToken, getToken, saveToken } from './storage';
+import { clearToken, getStoredItem, getToken, saveStoredItem, saveToken } from './storage';
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL || 'https://finanzapp-api.finanzapp.workers.dev';
@@ -148,6 +148,57 @@ export interface UpdateVariableExpenseInput {
   account_id?: string | null;
   notes?: string;
 }
+
+export type FuturePurchaseCategory =
+  | 'ropa'
+  | 'accesorios'
+  | 'tecnologia'
+  | 'suscripcion'
+  | 'hogar'
+  | 'experiencias'
+  | 'otros';
+
+export type FuturePurchasePaymentMode =
+  | 'one_time_cash'
+  | 'installments'
+  | 'recurring_subscription';
+
+export type FuturePurchasePriority = 'high' | 'medium' | 'low';
+export type FuturePurchaseStatus = 'evaluating' | 'planned' | 'purchased';
+
+export interface FuturePurchase {
+  id: string;
+  user_id: string;
+  title: string;
+  category: FuturePurchaseCategory | string;
+  amount: number;
+  payment_mode: FuturePurchasePaymentMode;
+  installments_count: number;
+  target_account_id: string | null;
+  target_account_name?: string | null;
+  priority: FuturePurchasePriority;
+  target_period: string | null;
+  status: FuturePurchaseStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateFuturePurchaseInput {
+  title: string;
+  category?: FuturePurchaseCategory | string;
+  amount: number;
+  payment_mode?: FuturePurchasePaymentMode;
+  installments_count?: number;
+  target_account_id?: string | null;
+  priority?: FuturePurchasePriority;
+  target_period?: string | null;
+  status?: FuturePurchaseStatus;
+  notes?: string | null;
+}
+
+export type UpdateFuturePurchaseInput = Partial<CreateFuturePurchaseInput>;
+
 
 interface AuthResponse {
   token: string;
@@ -651,3 +702,241 @@ export async function deleteVariableExpense(
   );
   return data || { success: true };
 }
+
+// ============================================================================
+// FUTURAS COMPRAS POSIBLES & PROYECTOS (/future-purchases con respaldo local)
+// ============================================================================
+
+const FUTURE_PURCHASES_STORAGE_KEY = '@finanzapp_future_purchases_v1';
+
+async function loadLocalFuturePurchases(): Promise<FuturePurchase[]> {
+  try {
+    const raw = await getStoredItem(FUTURE_PURCHASES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as FuturePurchase[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function saveLocalFuturePurchases(items: FuturePurchase[]): Promise<void> {
+  try {
+    await saveStoredItem(FUTURE_PURCHASES_STORAGE_KEY, JSON.stringify(items));
+  } catch {
+    // Ignore storage write errors
+  }
+}
+
+function sortFuturePurchases(items: FuturePurchase[]): FuturePurchase[] {
+  const priorityOrder: Record<string, number> = { high: 1, medium: 2, low: 3 };
+  return [...items].sort((a, b) => {
+    const pa = priorityOrder[a.priority] ?? 2;
+    const pb = priorityOrder[b.priority] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+}
+
+export async function getFuturePurchases(): Promise<FuturePurchase[]> {
+  const localItems = await loadLocalFuturePurchases();
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/future-purchases`, {
+      method: 'GET',
+      headers,
+    });
+    if (response.ok) {
+      const data = await parseJsonSafe<{ items?: FuturePurchase[] }>(
+        response,
+        'Error al obtener futuras compras'
+      );
+      if (Array.isArray(data.items)) {
+        // Merge any purely local items (prefixed with 'local-fp-') not yet synced
+        const remoteIds = new Set(data.items.map((i) => i.id));
+        const unsyncedLocals = localItems.filter(
+          (i) => i.id.startsWith('local-fp-') && !remoteIds.has(i.id)
+        );
+        const merged = sortFuturePurchases([...data.items, ...unsyncedLocals]);
+        await saveLocalFuturePurchases(merged);
+        return merged;
+      }
+    }
+  } catch {
+    // Fallback to local storage if remote endpoint is unavailable
+  }
+  return sortFuturePurchases(localItems);
+}
+
+export async function createFuturePurchase(
+  input: CreateFuturePurchaseInput
+): Promise<FuturePurchase> {
+  const nowIso = new Date().toISOString();
+  const paymentMode: FuturePurchasePaymentMode =
+    input.payment_mode || 'one_time_cash';
+  const installmentsCount =
+    paymentMode === 'installments'
+      ? Math.max(1, Math.min(60, Math.round(Number(input.installments_count) || 3)))
+      : 1;
+
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${API_BASE_URL}/future-purchases`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        ...input,
+        payment_mode: paymentMode,
+        installments_count: installmentsCount,
+      }),
+    });
+    if (response.ok) {
+      const data = await parseJsonSafe<{ item?: FuturePurchase }>(
+        response,
+        'Error al crear futura compra'
+      );
+      if (data.item) {
+        const current = await loadLocalFuturePurchases();
+        await saveLocalFuturePurchases(
+          sortFuturePurchases([data.item, ...current.filter((i) => i.id !== data.item!.id)])
+        );
+        return data.item;
+      }
+    }
+  } catch {
+    // Fallback to local creation if Worker doesn't expose /future-purchases yet
+  }
+
+  const localItem: FuturePurchase = {
+    id: `local-fp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    user_id: 'local',
+    title: input.title.trim(),
+    category: input.category || 'tecnologia',
+    amount: Math.max(1, Math.round(Number(input.amount) || 0)),
+    payment_mode: paymentMode,
+    installments_count: installmentsCount,
+    target_account_id: input.target_account_id || null,
+    priority: input.priority || 'medium',
+    target_period: input.target_period || null,
+    status: input.status || 'evaluating',
+    notes: input.notes?.trim() || null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  };
+
+  const current = await loadLocalFuturePurchases();
+  await saveLocalFuturePurchases(sortFuturePurchases([localItem, ...current]));
+  return localItem;
+}
+
+export async function updateFuturePurchase(
+  id: string,
+  input: UpdateFuturePurchaseInput
+): Promise<FuturePurchase> {
+  const current = await loadLocalFuturePurchases();
+  const existingLocal = current.find((i) => i.id === id);
+
+  if (!id.startsWith('local-fp-')) {
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`${API_BASE_URL}/future-purchases/${id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(input),
+      });
+      if (response.ok) {
+        const data = await parseJsonSafe<{ item?: FuturePurchase }>(
+          response,
+          'Error al actualizar futura compra'
+        );
+        if (data.item) {
+          const updatedList = current.map((i) => (i.id === id ? data.item! : i));
+          if (!current.some((i) => i.id === id)) {
+            updatedList.unshift(data.item);
+          }
+          await saveLocalFuturePurchases(sortFuturePurchases(updatedList));
+          return data.item;
+        }
+      }
+    } catch {
+      // Fallback to local update
+    }
+  }
+
+  const base: FuturePurchase = existingLocal || {
+    id,
+    user_id: 'local',
+    title: input.title || 'Proyecto de Compra',
+    category: input.category || 'tecnologia',
+    amount: input.amount || 0,
+    payment_mode: input.payment_mode || 'one_time_cash',
+    installments_count: input.installments_count || 1,
+    target_account_id: input.target_account_id || null,
+    priority: input.priority || 'medium',
+    target_period: input.target_period || null,
+    status: input.status || 'evaluating',
+    notes: input.notes || null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  const nextPaymentMode = input.payment_mode ?? base.payment_mode;
+  const nextInstallments =
+    nextPaymentMode === 'installments'
+      ? Math.max(
+          1,
+          Math.min(
+            60,
+            Math.round(Number(input.installments_count ?? base.installments_count) || 3)
+          )
+        )
+      : 1;
+
+  const updatedLocal: FuturePurchase = {
+    ...base,
+    title: input.title !== undefined ? input.title.trim() : base.title,
+    category: input.category !== undefined ? input.category : base.category,
+    amount:
+      input.amount !== undefined
+        ? Math.max(1, Math.round(Number(input.amount) || 0))
+        : base.amount,
+    payment_mode: nextPaymentMode,
+    installments_count: nextInstallments,
+    target_account_id:
+      input.target_account_id !== undefined
+        ? input.target_account_id
+        : base.target_account_id,
+    priority: input.priority !== undefined ? input.priority : base.priority,
+    target_period:
+      input.target_period !== undefined ? input.target_period : base.target_period,
+    status: input.status !== undefined ? input.status : base.status,
+    notes: input.notes !== undefined ? input.notes : base.notes,
+    updated_at: new Date().toISOString(),
+  };
+
+  const nextList = existingLocal
+    ? current.map((i) => (i.id === id ? updatedLocal : i))
+    : [updatedLocal, ...current];
+  await saveLocalFuturePurchases(sortFuturePurchases(nextList));
+  return updatedLocal;
+}
+
+export async function deleteFuturePurchase(
+  id: string
+): Promise<{ success: boolean }> {
+  if (!id.startsWith('local-fp-')) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`${API_BASE_URL}/future-purchases/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+    } catch {
+      // Ignore remote error and remove locally
+    }
+  }
+  const current = await loadLocalFuturePurchases();
+  await saveLocalFuturePurchases(current.filter((i) => i.id !== id));
+  return { success: true };
+}
+

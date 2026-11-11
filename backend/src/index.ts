@@ -89,6 +89,25 @@ export interface VariableExpenseRow {
   account_name?: string | null;
 }
 
+export interface FuturePurchaseRow {
+  id: string;
+  user_id: string;
+  title: string;
+  category: string;
+  amount: number;
+  payment_mode: 'one_time_cash' | 'installments' | 'recurring_subscription';
+  installments_count: number;
+  target_account_id: string | null;
+  target_account_name?: string | null;
+  priority: 'high' | 'medium' | 'low';
+  target_period: string | null;
+  status: 'evaluating' | 'planned' | 'purchased';
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+
 const VALID_ACCOUNT_TYPES: AccountType[] = ['checking', 'credit_card', 'savings', 'loan'];
 const VALID_RECURRING_TYPES: RecurringItemType[] = ['income', 'expense'];
 
@@ -1490,6 +1509,305 @@ app.delete('/variable-expenses/:id', async (c) => {
     account_id: existing.account_id,
     restored_amount: existing.amount,
   });
+});
+
+// ============================================================================
+// FUTURAS COMPRAS POSIBLES & MOTOR DE VIABILIDAD (/future-purchases)
+// ============================================================================
+
+async function ensureFuturePurchasesTable(db: D1Database): Promise<void> {
+  await db
+    .prepare(
+      `CREATE TABLE IF NOT EXISTS future_purchases (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT 'tecnologia',
+        amount INTEGER NOT NULL DEFAULT 0,
+        payment_mode TEXT NOT NULL DEFAULT 'one_time_cash' CHECK (payment_mode IN ('one_time_cash', 'installments', 'recurring_subscription')),
+        installments_count INTEGER NOT NULL DEFAULT 1,
+        target_account_id TEXT,
+        priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+        target_period TEXT,
+        status TEXT NOT NULL DEFAULT 'evaluating' CHECK (status IN ('evaluating', 'planned', 'purchased')),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (target_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+      )`
+    )
+    .run();
+}
+
+const VALID_PAYMENT_MODES = ['one_time_cash', 'installments', 'recurring_subscription'] as const;
+const VALID_PRIORITIES = ['high', 'medium', 'low'] as const;
+const VALID_FUTURE_STATUSES = ['evaluating', 'planned', 'purchased'] as const;
+
+app.get('/future-purchases', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  await ensureFuturePurchasesTable(c.env.DB);
+
+  const statusFilter = c.req.query('status');
+  let query = `
+    SELECT fp.*, a.name AS target_account_name
+    FROM future_purchases fp
+    LEFT JOIN accounts a ON a.id = fp.target_account_id
+    WHERE fp.user_id = ?
+  `;
+  const params: unknown[] = [user.id];
+
+  if (statusFilter) {
+    query += ` AND fp.status = ?`;
+    params.push(statusFilter.trim());
+  }
+
+  query += ` ORDER BY
+    CASE fp.priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END ASC,
+    fp.created_at DESC`;
+
+  const { results } = await c.env.DB.prepare(query)
+    .bind(...params)
+    .all<FuturePurchaseRow>();
+
+  return c.json({ items: results });
+});
+
+app.post('/future-purchases', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  await ensureFuturePurchasesTable(c.env.DB);
+
+  const body = await c.req.json<{
+    title?: string;
+    category?: string;
+    amount?: number;
+    payment_mode?: 'one_time_cash' | 'installments' | 'recurring_subscription';
+    installments_count?: number;
+    target_account_id?: string | null;
+    priority?: 'high' | 'medium' | 'low';
+    target_period?: string | null;
+    status?: 'evaluating' | 'planned' | 'purchased';
+    notes?: string | null;
+  }>();
+
+  const title = body.title?.trim();
+  const amount = Number(body.amount);
+
+  if (!title || !Number.isFinite(amount) || amount <= 0) {
+    return c.json({ error: 'Título y monto mayor a 0 son obligatorios' }, 400);
+  }
+
+  const category = body.category?.trim().toLowerCase() || 'tecnologia';
+  const paymentMode =
+    body.payment_mode && VALID_PAYMENT_MODES.includes(body.payment_mode)
+      ? body.payment_mode
+      : 'one_time_cash';
+  const installmentsCount =
+    paymentMode === 'installments'
+      ? Math.max(1, Math.min(60, Math.round(Number(body.installments_count) || 3)))
+      : 1;
+  const targetAccountId = body.target_account_id?.trim() || null;
+  const priority =
+    body.priority && VALID_PRIORITIES.includes(body.priority)
+      ? body.priority
+      : 'medium';
+  const targetPeriod = body.target_period?.trim() || null;
+  const status =
+    body.status && VALID_FUTURE_STATUSES.includes(body.status)
+      ? body.status
+      : 'evaluating';
+  const notes = body.notes?.trim() || null;
+  const id = crypto.randomUUID();
+
+  await c.env.DB.prepare(
+    `INSERT INTO future_purchases (
+      id, user_id, title, category, amount, payment_mode, installments_count,
+      target_account_id, priority, target_period, status, notes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+    .bind(
+      id,
+      user.id,
+      title,
+      category,
+      Math.round(amount),
+      paymentMode,
+      installmentsCount,
+      targetAccountId,
+      priority,
+      targetPeriod,
+      status,
+      notes
+    )
+    .run();
+
+  const created = await c.env.DB.prepare(
+    `SELECT fp.*, a.name AS target_account_name
+     FROM future_purchases fp
+     LEFT JOIN accounts a ON a.id = fp.target_account_id
+     WHERE fp.id = ?`
+  )
+    .bind(id)
+    .first<FuturePurchaseRow>();
+
+  return c.json({ item: created }, 201);
+});
+
+app.put('/future-purchases/:id', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  await ensureFuturePurchasesTable(c.env.DB);
+
+  const id = c.req.param('id');
+  const existing = await c.env.DB.prepare(
+    `SELECT * FROM future_purchases WHERE id = ? AND user_id = ?`
+  )
+    .bind(id, user.id)
+    .first<FuturePurchaseRow>();
+
+  if (!existing) {
+    return c.json({ error: 'Ítem de compra futura no encontrado' }, 404);
+  }
+
+  const body = await c.req.json<{
+    title?: string;
+    category?: string;
+    amount?: number;
+    payment_mode?: 'one_time_cash' | 'installments' | 'recurring_subscription';
+    installments_count?: number;
+    target_account_id?: string | null;
+    priority?: 'high' | 'medium' | 'low';
+    target_period?: string | null;
+    status?: 'evaluating' | 'planned' | 'purchased';
+    notes?: string | null;
+  }>();
+
+  const title = body.title !== undefined ? body.title.trim() : existing.title;
+  const amount = body.amount !== undefined ? Number(body.amount) : existing.amount;
+
+  if (!title || !Number.isFinite(amount) || amount <= 0) {
+    return c.json({ error: 'Título y monto mayor a 0 son obligatorios' }, 400);
+  }
+
+  const category =
+    body.category !== undefined ? body.category.trim().toLowerCase() : existing.category;
+  const paymentMode =
+    body.payment_mode !== undefined && VALID_PAYMENT_MODES.includes(body.payment_mode)
+      ? body.payment_mode
+      : existing.payment_mode;
+  const installmentsCount =
+    paymentMode === 'installments'
+      ? Math.max(
+          1,
+          Math.min(
+            60,
+            Math.round(
+              Number(
+                body.installments_count !== undefined
+                  ? body.installments_count
+                  : existing.installments_count
+              ) || 3
+            )
+          )
+        )
+      : 1;
+  const targetAccountId =
+    body.target_account_id !== undefined
+      ? body.target_account_id
+        ? body.target_account_id.trim()
+        : null
+      : existing.target_account_id;
+  const priority =
+    body.priority !== undefined && VALID_PRIORITIES.includes(body.priority)
+      ? body.priority
+      : existing.priority;
+  const targetPeriod =
+    body.target_period !== undefined
+      ? body.target_period
+        ? body.target_period.trim()
+        : null
+      : existing.target_period;
+  const status =
+    body.status !== undefined && VALID_FUTURE_STATUSES.includes(body.status)
+      ? body.status
+      : existing.status;
+  const notes =
+    body.notes !== undefined
+      ? body.notes
+        ? body.notes.trim()
+        : null
+      : existing.notes;
+
+  await c.env.DB.prepare(
+    `UPDATE future_purchases
+     SET title = ?, category = ?, amount = ?, payment_mode = ?, installments_count = ?,
+         target_account_id = ?, priority = ?, target_period = ?, status = ?, notes = ?,
+         updated_at = datetime('now')
+     WHERE id = ? AND user_id = ?`
+  )
+    .bind(
+      title,
+      category,
+      Math.round(amount),
+      paymentMode,
+      installmentsCount,
+      targetAccountId,
+      priority,
+      targetPeriod,
+      status,
+      notes,
+      id,
+      user.id
+    )
+    .run();
+
+  const updated = await c.env.DB.prepare(
+    `SELECT fp.*, a.name AS target_account_name
+     FROM future_purchases fp
+     LEFT JOIN accounts a ON a.id = fp.target_account_id
+     WHERE fp.id = ?`
+  )
+    .bind(id)
+    .first<FuturePurchaseRow>();
+
+  return c.json({ item: updated });
+});
+
+app.delete('/future-purchases/:id', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  await ensureFuturePurchasesTable(c.env.DB);
+
+  const id = c.req.param('id');
+  const existing = await c.env.DB.prepare(
+    `SELECT id FROM future_purchases WHERE id = ? AND user_id = ?`
+  )
+    .bind(id, user.id)
+    .first();
+
+  if (!existing) {
+    return c.json({ error: 'Ítem de compra futura no encontrado' }, 404);
+  }
+
+  await c.env.DB.prepare(`DELETE FROM future_purchases WHERE id = ? AND user_id = ?`)
+    .bind(id, user.id)
+    .run();
+
+  return c.json({ success: true });
 });
 
 export default app;

@@ -117,3 +117,27 @@ CREATE TABLE IF NOT EXISTS variable_expenses (
 CREATE INDEX IF NOT EXISTS idx_variable_expenses_user_period ON variable_expenses(user_id, period);
 CREATE INDEX IF NOT EXISTS idx_variable_expenses_date ON variable_expenses(user_id, date);
 
+-- Tabla de futuras compras posibles, proyectos de compra y nuevas suscripciones en evaluación
+CREATE TABLE IF NOT EXISTS future_purchases (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'tecnologia', -- 'ropa', 'accesorios', 'tecnologia', 'suscripcion', 'hogar', 'experiencias', 'otros'
+  amount INTEGER NOT NULL DEFAULT 0,           -- Precio total (o costo mensual si es suscripción)
+  payment_mode TEXT NOT NULL DEFAULT 'one_time_cash' CHECK (payment_mode IN ('one_time_cash', 'installments', 'recurring_subscription')),
+  installments_count INTEGER NOT NULL DEFAULT 1,
+  target_account_id TEXT,                      -- Cuenta vista o tarjeta de crédito preferida
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  target_period TEXT,                          -- Mes objetivo opcional (YYYY-MM)
+  status TEXT NOT NULL DEFAULT 'evaluating' CHECK (status IN ('evaluating', 'planned', 'purchased')),
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_account_id) REFERENCES accounts(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_future_purchases_user_id ON future_purchases(user_id);
+CREATE INDEX IF NOT EXISTS idx_future_purchases_status ON future_purchases(user_id, status);
+
+

@@ -1,6 +1,6 @@
-import { Account, RecurringItem, VariableExpense } from '@/lib/api';
+import { Account, FuturePurchase, RecurringItem, VariableExpense } from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
-import { isItemActiveInMonth, shiftPeriod } from '@/lib/finance';
+import { evaluateFuturePurchase, isItemActiveInMonth, shiftPeriod } from '@/lib/finance';
 
 export type InsightTone = 'critical' | 'warning' | 'emerald' | 'info';
 
@@ -151,11 +151,13 @@ export function generateFinancialIntelligence({
   accounts,
   recurringItems,
   variableExpenses,
+  futurePurchases = [],
 }: {
   period: string;
   accounts: Account[];
   recurringItems: RecurringItem[];
   variableExpenses: VariableExpense[];
+  futurePurchases?: FuturePurchase[];
 }): FinancialIntelligenceReport {
   const insights: FinancialInsight[] = [];
 
@@ -824,6 +826,78 @@ export function generateFinancialIntelligence({
           { label: 'Flujo Libre Mensual', value: formatCLP(freeCashFlow) },
         ],
       });
+    }
+  }
+
+  // =========================================================================
+  // CORRELACIÓN 13: Auditoría de Futuras Compras y Suscripciones en Evaluación
+  // =========================================================================
+  const activeWishlist = futurePurchases.filter((fp) => fp.status !== 'purchased');
+
+  if (activeWishlist.length > 0 && monthlyIncome > 0) {
+    // 13.1 Alerta preventiva de Sobrecarga de Suscripciones (> 8% del ingreso sumando actuales + en evaluación)
+    const wishlistSubscriptions = activeWishlist.filter(
+      (fp) => fp.payment_mode === 'recurring_subscription' || fp.category === 'suscripcion'
+    );
+    const wishlistSubMonthlyTotal = wishlistSubscriptions.reduce(
+      (sum, fp) => sum + (fp.amount || 0),
+      0
+    );
+    const combinedSubMonthly = subscriptionsTotal + wishlistSubMonthlyTotal;
+    const combinedSubRatio = (combinedSubMonthly / monthlyIncome) * 100;
+
+    if (wishlistSubMonthlyTotal > 0 && combinedSubRatio > 8) {
+      insights.push({
+        id: 'insight-wishlist-subscription-overload',
+        category: 'habitos',
+        priority: 3,
+        tone: 'warning',
+        title: 'Alerta Preventiva: Sobrecarga de Suscripciones',
+        badge: `${combinedSubRatio.toFixed(1)}% del Ingreso`,
+        summary: `Sumar tus nuevas suscripciones en evaluación (+${formatCLP(wishlistSubMonthlyTotal)}/mes) elevaría tu carga mensual en membresías a ${formatCLP(combinedSubMonthly)}/mes (${formatCLP(combinedSubMonthly * 12)}/año).`,
+        detail: `El umbral saludable para suscripciones y servicios digitales es mantenerlos bajo el 8% de tu sueldo líquido. Actualmente destinas ${formatCLP(subscriptionsTotal)}/mes y tienes ${wishlistSubscriptions.length} ${wishlistSubscriptions.length === 1 ? 'suscripción proyectada' : 'suscripciones proyectadas'} (${wishlistSubscriptions.map((s) => s.title).join(', ')}).`,
+        actionStep:
+          'Aplica la regla "1 entra, 1 sale": antes de contratar una nueva suscripción en Compras Futuras, da de baja otra plataforma que uses poco.',
+        potentialSavingsCLP: wishlistSubMonthlyTotal,
+        metrics: [
+          { label: 'Suscripciones Actuales', value: formatCLP(subscriptionsTotal) },
+          { label: 'En Evaluación', value: `+${formatCLP(wishlistSubMonthlyTotal)}/mes` },
+          { label: 'Costo Combinado Anual', value: formatCLP(combinedSubMonthly * 12) },
+        ],
+      });
+    }
+
+    // 13.2 Insight positivo (Luz Verde) cuando existe superávit holgado y un ítem de Prioridad Alta viable
+    const highPriorityItems = activeWishlist.filter((fp) => fp.priority === 'high');
+    if (freeCashFlow > 0 && highPriorityItems.length > 0) {
+      for (const highItem of highPriorityItems) {
+        const evalResult = evaluateFuturePurchase(highItem, {
+          period,
+          accounts,
+          recurringItems,
+          variableExpenses,
+        });
+        if (evalResult.verdict === 'viable_today') {
+          insights.push({
+            id: `insight-wishlist-greenlight-${highItem.id}`,
+            category: 'presupuesto',
+            priority: 5,
+            tone: 'emerald',
+            title: `Luz Verde: Este mes puedes adquirir ${highItem.title} sin afectar tu meta de ahorro`,
+            badge: 'Prioridad Alta · Viable',
+            summary: `Tu holgura mensual de ${formatCLP(freeCashFlow)} permite ejecutar "${highItem.title}" (${formatCLP(highItem.amount)}) manteniendo un presupuesto diario saludable de ${formatCLP(evalResult.cashPath.resultingSafePerDay)}/día.`,
+            detail: evalResult.verdictExplanation,
+            actionStep:
+              'Puedes marcarlo como comprado en 1 toque desde la pestaña Compras Futuras para registrarlo automáticamente en tus finanzas.',
+            metrics: [
+              { label: 'Costo Ítem', value: formatCLP(highItem.amount) },
+              { label: 'Margen Seguro Hoy', value: formatCLP(evalResult.cashPath.safeAvailableToday) },
+              { label: 'Safe-to-Spend Post-Compra', value: `${formatCLP(evalResult.cashPath.resultingSafePerDay)}/día` },
+            ],
+          });
+          break;
+        }
+      }
     }
   }
 

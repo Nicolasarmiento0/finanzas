@@ -1,7 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import {
   Account,
+  FuturePurchase,
   getAccounts,
+  getFuturePurchases,
   getMonthlyPayments,
   getRecurringItems,
   getVariableExpenses,
@@ -28,6 +30,7 @@ interface FinanzAIContextType {
     recurringItems?: RecurringItem[];
     payments?: MonthlyPayment[];
     variableExpenses?: VariableExpense[];
+    futurePurchases?: FuturePurchase[];
     period?: string;
   }) => void;
 }
@@ -44,21 +47,24 @@ export function FinanzAIProvider({ children }: { children: React.ReactNode }) {
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
   const [payments, setPayments] = useState<MonthlyPayment[]>([]);
   const [variableExpenses, setVariableExpenses] = useState<VariableExpense[]>([]);
+  const [futurePurchases, setFuturePurchases] = useState<FuturePurchase[]>([]);
   const [period, setPeriod] = useState<string>(getCurrentPeriod());
 
   const refreshFinancialData = useCallback(async () => {
     setLoadingData(true);
     try {
-      const [accList, recList, payList, varList] = await Promise.all([
+      const [accList, recList, payList, varList, fpList] = await Promise.all([
         getAccounts(),
         getRecurringItems(),
         getMonthlyPayments(),
         getVariableExpenses(),
+        getFuturePurchases(),
       ]);
       setAccounts(accList);
       setRecurringItems(recList);
       setPayments(payList);
       setVariableExpenses(varList);
+      setFuturePurchases(fpList);
     } catch (e) {
       console.warn('FinanzAI: Error al cargar datos financieros:', e);
     } finally {
@@ -72,12 +78,14 @@ export function FinanzAIProvider({ children }: { children: React.ReactNode }) {
       recurringItems?: RecurringItem[];
       payments?: MonthlyPayment[];
       variableExpenses?: VariableExpense[];
+      futurePurchases?: FuturePurchase[];
       period?: string;
     }) => {
       if (data.accounts) setAccounts(data.accounts);
       if (data.recurringItems) setRecurringItems(data.recurringItems);
       if (data.payments) setPayments(data.payments);
       if (data.variableExpenses) setVariableExpenses(data.variableExpenses);
+      if (data.futurePurchases) setFuturePurchases(data.futurePurchases);
       if (data.period) setPeriod(data.period);
     },
     []
@@ -94,12 +102,13 @@ export function FinanzAIProvider({ children }: { children: React.ReactNode }) {
         recurringItems,
         variableExpenses,
         payments,
+        futurePurchases,
         period,
       });
 
       setActiveResult(result);
     },
-    [accounts, recurringItems, variableExpenses, payments, period]
+    [accounts, recurringItems, variableExpenses, payments, futurePurchases, period]
   );
 
   const openFinanzAI = useCallback(

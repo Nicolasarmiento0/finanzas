@@ -1,4 +1,12 @@
-import { Account, CreateAccountInput, RecurringItem, VariableExpense } from './api';
+import {
+  Account,
+  CreateAccountInput,
+  FuturePurchase,
+  MonthlyPayment,
+  RecurringItem,
+  VariableExpense,
+} from './api';
+import { formatCLP } from './currency';
 
 const MONTH_NAMES_FULL = [
   'Enero',
@@ -1104,3 +1112,661 @@ export function calculateProjectedPosition(
     deltaMonths,
   };
 }
+
+// ============================================================================
+// FASE 5: MOTOR CUANTITATIVO DE VIABILIDAD DE FUTURAS COMPRAS Y MODO CARRITO
+// ============================================================================
+
+export type PurchaseViabilityVerdict = 'viable_today' | 'viable_planned' | 'postpone';
+
+export interface DebtReleaseMilestone {
+  endPeriod: string; // Mes en que se paga la última cuota (ej. "2026-12")
+  releasePeriod: string; // Primer mes libre de ese gasto (ej. "2027-01")
+  endLabel: string; // "Dic 2026"
+  releaseLabel: string; // "Ene 2027"
+  releasedMonthlyAmount: number;
+  cumulativeReleasedAmount: number;
+  itemTitles: string[];
+}
+
+export interface FuturePurchaseEvaluation {
+  itemId: string;
+  verdict: PurchaseViabilityVerdict;
+  verdictBadge: string;
+  verdictHeadline: string;
+  verdictExplanation: string;
+  // Camino A: Contado Hoy
+  cashPath: {
+    isViableToday: boolean;
+    safeAvailableToday: number;
+    currentSafePerDay: number;
+    resultingSafePerDay: number;
+    remainingDaysInMonth: number;
+  };
+  // Camino B: Tarjeta en N Cuotas
+  installmentsPath: {
+    installmentsCount: number;
+    monthlyInstallment: number;
+    cardId: string | null;
+    cardName: string;
+    availableCredit: number;
+    currentUsagePercent: number;
+    resultingUsagePercent: number;
+    fitsInCardCredit: boolean;
+    billingDay: number | null;
+    billingAdvice: string;
+    isViableInInstallments: boolean;
+  };
+  // Camino C: Meta de Ahorro Previo
+  savingsGoalPath: {
+    monthlySavingQuota: number;
+    monthsRequired: number;
+    estimatedReadyPeriod: string;
+    estimatedReadyLabel: string;
+  };
+  // Cruce con Liberación de Deudas (Smart Debt-Release Matching)
+  debtReleaseMatch: {
+    hasUpcomingRelease: boolean;
+    optimalPurchasePeriod: string | null;
+    optimalPurchaseLabel: string | null;
+    endPeriodLabel: string | null;
+    releasedMonthlyAmount: number;
+    releasedItemTitles: string[];
+    recommendationText: string | null;
+  };
+  // Indicadores Anti-Impulso
+  antiImpulse: {
+    hourlyWage: number;
+    workHoursRequired: number;
+    workDaysRequired: number;
+    bestSavingsAccountName: string;
+    bestAnnualRatePercent: number;
+    opportunityCost1YearTotal: number;
+    opportunityCost1YearInterest: number;
+    isSubscription: boolean;
+    annualizedSubscriptionCost: number;
+    threeYearSubscriptionCost: number;
+    currentFixedRatioPercent: number;
+    newFixedRatioPercent: number;
+  };
+}
+
+export interface FuturePurchaseCartSimulation {
+  selectedCount: number;
+  totalCatalogValue: number;
+  immediateCashOutflow: number;
+  additionalMonthlyOutflow: number;
+  additionalInstallmentsMonthly: number;
+  additionalSubscriptionsMonthly: number;
+  currentFreeCashFlow: number;
+  projectedFreeCashFlow: number;
+  currentSafePerDay: number;
+  projectedSafePerDay: number;
+  currentHealthScore: number;
+  projectedHealthScore: number;
+  cartVerdict: PurchaseViabilityVerdict;
+  cartVerdictLabel: string;
+}
+
+/**
+ * Obtiene los hitos futuros donde finalizan gastos fijos o créditos (`end_date`),
+ * agrupados por mes de término y calculando el primer mes en que ese flujo queda liberado.
+ */
+export function getDebtReleaseMilestones(
+  recurringItems: RecurringItem[],
+  basePeriod: string,
+  monthsAhead = 24
+): DebtReleaseMilestone[] {
+  const expiring = getExpiringExpensesInHorizon(recurringItems, basePeriod, monthsAhead);
+  if (expiring.length === 0) return [];
+
+  const grouped = new Map<string, { amount: number; titles: string[] }>();
+  for (const exp of expiring) {
+    const prev = grouped.get(exp.endPeriod) || { amount: 0, titles: [] };
+    prev.amount += exp.amount;
+    prev.titles.push(exp.title);
+    grouped.set(exp.endPeriod, prev);
+  }
+
+  const sortedPeriods = Array.from(grouped.keys()).sort((a, b) => a.localeCompare(b));
+  let cumulative = 0;
+
+  return sortedPeriods.map((endPeriod) => {
+    const entry = grouped.get(endPeriod)!;
+    cumulative += entry.amount;
+    const releasePeriod = shiftPeriod(endPeriod, 1);
+    return {
+      endPeriod,
+      releasePeriod,
+      endLabel: formatPeriodFull(endPeriod),
+      releaseLabel: formatPeriodFull(releasePeriod),
+      releasedMonthlyAmount: entry.amount,
+      cumulativeReleasedAmount: cumulative,
+      itemTitles: entry.titles,
+    };
+  });
+}
+
+/**
+ * Evalúa integralmente un ítem de Futura Compra o Nueva Suscripción contra la situación
+ * financiera en vivo del usuario (Safe-to-Spend, Cupo de Tarjetas, Deudas que Expiran, Horas de Trabajo).
+ */
+export function evaluateFuturePurchase(
+  item: Pick<
+    FuturePurchase,
+    | 'id'
+    | 'title'
+    | 'category'
+    | 'amount'
+    | 'payment_mode'
+    | 'installments_count'
+    | 'target_account_id'
+    | 'priority'
+  >,
+  context: {
+    period: string;
+    accounts: Account[];
+    recurringItems: RecurringItem[];
+    variableExpenses?: VariableExpense[];
+    payments?: MonthlyPayment[];
+  },
+  overrideInstallments?: number,
+  overridePaymentMode?: FuturePurchase['payment_mode']
+): FuturePurchaseEvaluation {
+  const { period, accounts, recurringItems, variableExpenses = [], payments = [] } = context;
+  const amount = Math.max(0, Math.round(item.amount || 0));
+  const paymentMode = overridePaymentMode || item.payment_mode || 'one_time_cash';
+  const installmentsCount =
+    paymentMode === 'installments'
+      ? Math.max(1, Math.round(overrideInstallments ?? item.installments_count ?? 3))
+      : overrideInstallments && overrideInstallments > 1
+      ? Math.round(overrideInstallments)
+      : Math.max(3, Math.round(item.installments_count > 1 ? item.installments_count : 6));
+
+  const isSubscription =
+    paymentMode === 'recurring_subscription' || item.category === 'suscripcion';
+
+  // 1. Flujo de caja y liquidez del período
+  const activeRecurring = recurringItems.filter((r) => isItemActiveInMonth(r, period));
+  const monthlyIncome = activeRecurring
+    .filter((r) => r.type === 'income')
+    .reduce((sum, r) => sum + r.amount, 0);
+  const monthlyFixedExpenses = activeRecurring
+    .filter((r) => r.type === 'expense')
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  const periodVariables = variableExpenses.filter(
+    (v) => (v.period || v.date?.slice(0, 7)) === period
+  );
+  const variableSpentTotal = periodVariables.reduce((sum, v) => sum + v.amount, 0);
+
+  const freeCashFlow = monthlyIncome - monthlyFixedExpenses - variableSpentTotal;
+
+  // Días restantes del mes
+  const now = new Date();
+  const [py, pm] = period.split('-').map(Number);
+  const isCurrentCalendarMonth =
+    py === now.getFullYear() && pm === now.getMonth() + 1;
+  const totalDaysInMonth = new Date(py || now.getFullYear(), pm || now.getMonth() + 1, 0).getDate();
+  const remainingDaysInMonth = isCurrentCalendarMonth
+    ? Math.max(1, totalDaysInMonth - now.getDate() + 1)
+    : totalDaysInMonth;
+
+  // Liquidez disponible hoy protegiendo gastos fijos pendientes
+  const checkingAccounts = accounts.filter((a) => a.type === 'checking');
+  const checkingRawTotal = checkingAccounts.reduce(
+    (sum, a) => sum + (a.current_balance || 0),
+    0
+  );
+  const checkingAvailableAfterVar = Math.max(0, checkingRawTotal - variableSpentTotal);
+
+  const paidRecurringIds = new Set(
+    payments
+      .filter((p) => p.target_type === 'recurring_item' && p.period === period && p.is_paid)
+      .map((p) => p.target_id)
+  );
+  const pendingFixedExpenses = activeRecurring
+    .filter((r) => r.type === 'expense' && !paidRecurringIds.has(r.id))
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  // Presupuesto libre disponible (usando el mayor entre margen operativo del mes y liquidez neta protegida)
+  const operatingRemainingBudget = monthlyIncome - monthlyFixedExpenses - variableSpentTotal;
+  const protectedAccountMargin = checkingAvailableAfterVar - pendingFixedExpenses;
+  const effectiveFreeBudget = Math.max(operatingRemainingBudget, protectedAccountMargin);
+
+  const currentSafePerDay = Math.max(
+    0,
+    Math.round(effectiveFreeBudget / remainingDaysInMonth)
+  );
+  const MIN_HEALTHY_DAILY_CLP = 8000;
+  const safeCushionForRestOfMonth = MIN_HEALTHY_DAILY_CLP * remainingDaysInMonth;
+  const safeAvailableToday = Math.max(0, effectiveFreeBudget - safeCushionForRestOfMonth);
+
+  const resultingSafePerDay = Math.round(
+    (effectiveFreeBudget - amount) / remainingDaysInMonth
+  );
+  const isCashViableToday =
+    amount <= safeAvailableToday && resultingSafePerDay >= MIN_HEALTHY_DAILY_CLP;
+
+  // 2. Camino B: Evaluación en Tarjeta de Crédito en N cuotas
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+  const preferredCard =
+    creditCards.find((c) => c.id === item.target_account_id) ||
+    creditCards.sort((a, b) => (b.credit_limit || 0) - (a.credit_limit || 0))[0] ||
+    null;
+
+  const monthlyInstallment = Math.max(1, Math.round(amount / installmentsCount));
+  let cardName = 'Tarjeta de Crédito';
+  let availableCredit = 0;
+  let currentUsagePercent = 0;
+  let resultingUsagePercent = 0;
+  let fitsInCardCredit = false;
+  let billingDay: number | null = null;
+  let billingAdvice = 'Configura el día de facturación de tu tarjeta para optimizar la primera cuota.';
+
+  if (preferredCard) {
+    cardName = preferredCard.name;
+    const cardRecurring = recurringItems.filter((r) => r.account_id === preferredCard.id);
+    const metrics = calculateCreditCardMetrics(preferredCard, cardRecurring, period);
+    availableCredit = metrics.availableCredit;
+    currentUsagePercent = metrics.usagePercent;
+    const newUsed = metrics.usedAmount + amount;
+    resultingUsagePercent =
+      metrics.creditLimit > 0
+        ? Math.min(100, Math.round((newUsed / metrics.creditLimit) * 100))
+        : 100;
+    fitsInCardCredit = amount <= availableCredit && resultingUsagePercent <= 60;
+    billingDay = preferredCard.billing_day;
+
+    if (billingDay && billingDay >= 1 && billingDay <= 31) {
+      billingAdvice = `Si compras después del día ${billingDay} en tu ${cardName}, la 1ª cuota de ${formatCLP(monthlyInstallment)} pasa al subsiguiente estado de cuenta.`;
+    }
+  } else {
+    // Si aún no registra tarjeta, evaluar por peso sobre el flujo libre
+    fitsInCardCredit = true;
+    resultingUsagePercent = 25;
+  }
+
+  const baseMonthlySurplus = Math.max(0, monthlyIncome - monthlyFixedExpenses);
+  const installmentWeightOnSurplus =
+    baseMonthlySurplus > 0 ? monthlyInstallment / baseMonthlySurplus : 1;
+  const isViableInInstallments =
+    fitsInCardCredit &&
+    baseMonthlySurplus > monthlyInstallment &&
+    installmentWeightOnSurplus <= 0.25;
+
+  // 3. Camino C: Meta de Ahorro Previo (apartando 10% del flujo libre mensual, piso $25.000)
+  const tenPercentSurplus = Math.round(baseMonthlySurplus * 0.1);
+  const monthlySavingQuota = Math.max(25000, tenPercentSurplus);
+  const monthsRequired = Math.max(1, Math.ceil(amount / monthlySavingQuota));
+  const estimatedReadyPeriod = shiftPeriod(period, monthsRequired);
+  const estimatedReadyLabel = formatPeriodFull(estimatedReadyPeriod);
+
+  // 4. Cruce con Liberación de Deudas Mes a Mes (Smart Debt-Release Matching)
+  const milestones = getDebtReleaseMilestones(recurringItems, period, 24);
+  const targetMonthlyNeed = isSubscription
+    ? amount
+    : paymentMode === 'installments'
+    ? monthlyInstallment
+    : Math.round(amount / 3);
+
+  const matchingMilestone =
+    milestones.find((m) => m.cumulativeReleasedAmount >= targetMonthlyNeed) ||
+    milestones[0] ||
+    null;
+
+  let debtReleaseRecommendation: string | null = null;
+  if (matchingMilestone) {
+    const titlesJoined = matchingMilestone.itemTitles.slice(0, 3).join(', ');
+    debtReleaseRecommendation = `En ${matchingMilestone.endLabel} dejas de pagar +${formatCLP(
+      matchingMilestone.releasedMonthlyAmount
+    )}/mes (${titlesJoined}). Si programas esta compra para ${
+      matchingMilestone.releaseLabel
+    }, la absorbes con tu flujo recién liberado sin disminuir tu capacidad de ahorro actual.`;
+  }
+
+  // 5. Indicadores Anti-Impulso: Horas de Trabajo y Costo de Oportunidad
+  const hourlyWage = monthlyIncome > 0 ? monthlyIncome / 180 : 10000;
+  const workHoursRequired = Math.max(0.5, Number((amount / hourlyWage).toFixed(1)));
+  const workDaysRequired = Number((workHoursRequired / 8).toFixed(1));
+
+  const savingsAccounts = accounts
+    .filter((a) => a.type === 'savings')
+    .map((a) => accountToSavingsAccount(a));
+  const bestSavings = [...savingsAccounts].sort((a, b) => b.annualRate - a.annualRate)[0];
+  const bestAnnualRate =
+    bestSavings && bestSavings.annualRate > 0 ? bestSavings.annualRate : 0.045;
+  const bestAnnualRatePercent = Number((bestAnnualRate * 100).toFixed(1));
+  const bestSavingsAccountName =
+    bestSavings && bestSavings.annualRate > 0
+      ? bestSavings.name
+      : 'Cuenta Rentable (4.5% ref.)';
+
+  const opportunityCost1YearTotal = Math.round(
+    amount * Math.pow(1 + bestAnnualRate / 12, 12)
+  );
+  const opportunityCost1YearInterest = Math.max(0, opportunityCost1YearTotal - amount);
+
+  const currentFixedRatioPercent =
+    monthlyIncome > 0 ? Math.round((monthlyFixedExpenses / monthlyIncome) * 100) : 0;
+  const addedMonthlyFixed = isSubscription
+    ? amount
+    : paymentMode === 'installments'
+    ? monthlyInstallment
+    : 0;
+  const newFixedRatioPercent =
+    monthlyIncome > 0
+      ? Math.round(((monthlyFixedExpenses + addedMonthlyFixed) / monthlyIncome) * 100)
+      : 0;
+
+  // 6. Dictamen Final del Semáforo (Luz Verde / Ámbar / Roja)
+  let verdict: PurchaseViabilityVerdict = 'postpone';
+  let verdictBadge = 'POSPONER';
+  let verdictHeadline = 'Riesgo de Descalce · Posponer';
+  let verdictExplanation = '';
+
+  if (isSubscription) {
+    const subscriptionFitsEasily =
+      freeCashFlow - amount >= safeCushionForRestOfMonth && newFixedRatioPercent <= 55;
+    const subscriptionFitsTight =
+      baseMonthlySurplus > amount * 2 && newFixedRatioPercent <= 65;
+
+    if (subscriptionFitsEasily) {
+      verdict = 'viable_today';
+      verdictBadge = 'VIABLE HOY';
+      verdictHeadline = 'Suscripción Viable sin Descalce';
+      verdictExplanation = `Tu flujo libre absorbe los ${formatCLP(amount)}/mes (${formatCLP(
+        amount * 12
+      )}/año) manteniendo tu rigidez fija en ${newFixedRatioPercent}%.`;
+    } else if (subscriptionFitsTight || matchingMilestone) {
+      verdict = 'viable_planned';
+      verdictBadge = matchingMilestone
+        ? `MEJOR EN ${formatPeriodShort(matchingMilestone.releasePeriod).toUpperCase()}`
+        : 'CON PLANIFICACIÓN';
+      verdictHeadline = matchingMilestone
+        ? `Ideal activar en ${matchingMilestone.releaseLabel}`
+        : 'Viable si reemplazas otra suscripción';
+      verdictExplanation = matchingMilestone
+        ? `Hoy sumaría rigidez (${newFixedRatioPercent}%), pero en ${matchingMilestone.releaseLabel} liberas +${formatCLP(
+            matchingMilestone.releasedMonthlyAmount
+          )}/mes.`
+        : `Representa ${formatCLP(amount * 12)} al año. Conviene dar de baja una app que no uses antes de activarla.`;
+    } else {
+      verdict = 'postpone';
+      verdictBadge = 'SOBRECARGA FIJA';
+      verdictHeadline = 'Posponer Nueva Suscripción';
+      verdictExplanation = `Comprometería tu margen mensual llevándote a ${newFixedRatioPercent}% de gastos fijos sobre ingreso.`;
+    }
+  } else if (paymentMode === 'installments') {
+    if (isViableInInstallments && installmentWeightOnSurplus <= 0.12) {
+      verdict = 'viable_today';
+      verdictBadge = `VIABLE EN ${installmentsCount} CUOTAS`;
+      verdictHeadline = `Compra Viable en ${installmentsCount} Cuotas de ${formatCLP(monthlyInstallment)}`;
+      verdictExplanation = `La cuota representa solo el ${Math.round(
+        installmentWeightOnSurplus * 100
+      )}% de tu superávit mensual y deja tu ${cardName} en ${resultingUsagePercent}% de uso.`;
+    } else if (isViableInInstallments || isCashViableToday) {
+      verdict = 'viable_planned';
+      verdictBadge = matchingMilestone
+        ? `EN ${installmentsCount} CUOTAS O ${formatPeriodShort(matchingMilestone.releasePeriod).toUpperCase()}`
+        : `EN ${installmentsCount} CUOTAS`;
+      verdictHeadline = `Viable en ${installmentsCount} Cuotas (${formatCLP(monthlyInstallment)}/mes)`;
+      verdictExplanation = `Al contado golpearía tu liquidez diaria (${formatCLP(
+         Math.max(0, resultingSafePerDay)
+      )}/día), pero en ${installmentsCount} cuotas sin interés cabe en tu flujo mensual.`;
+    } else {
+      verdict = 'postpone';
+      verdictBadge = matchingMilestone
+        ? `MEJOR EN ${formatPeriodShort(matchingMilestone.releasePeriod).toUpperCase()}`
+        : 'POSPONER';
+      verdictHeadline = !fitsInCardCredit
+        ? `Excede umbral prudente en ${cardName} (${resultingUsagePercent}%)`
+        : 'Cuota compromete tu margen libre';
+      verdictExplanation = matchingMilestone
+        ? `Conviene esperar a ${matchingMilestone.releaseLabel} cuando liberas +${formatCLP(
+            matchingMilestone.releasedMonthlyAmount
+          )}/mes.`
+        : `Ahorrando ${formatCLP(monthlySavingQuota)}/mes lo compras al contado en ${monthsRequired} ${
+            monthsRequired === 1 ? 'mes' : 'meses'
+          } (${estimatedReadyLabel}).`;
+    }
+  } else {
+    // Pago único al contado (one_time_cash)
+    if (isCashViableToday) {
+      verdict = 'viable_today';
+      verdictBadge = 'VIABLE HOY';
+      verdictHeadline = 'Compra Viable al Contado Hoy';
+      verdictExplanation = `Cuentas con margen seguro inmediato (${formatCLP(
+        safeAvailableToday
+      )}) y tu presupuesto diario queda saludable en ${formatCLP(resultingSafePerDay)}/día.`;
+    } else if (isViableInInstallments || monthsRequired <= 3) {
+      verdict = 'viable_planned';
+      verdictBadge = isViableInInstallments
+        ? `EN ${installmentsCount} CUOTAS`
+        : matchingMilestone
+        ? `MEJOR EN ${formatPeriodShort(matchingMilestone.releasePeriod).toUpperCase()}`
+        : `AHORRO ${monthsRequired}M`;
+      verdictHeadline = isViableInInstallments
+        ? `Mejor en ${installmentsCount} Cuotas (${formatCLP(monthlyInstallment)}/mes) o Ahorro`
+        : `Meta alcanzable en ${monthsRequired} ${monthsRequired === 1 ? 'mes' : 'meses'}`;
+      verdictExplanation = `Al contado hoy reduciría tu presupuesto diario a ${formatCLP(
+        Math.max(0, resultingSafePerDay)
+      )}/día. En ${installmentsCount} cuotas sin interés pagas solo ${formatCLP(
+        monthlyInstallment
+      )}/mes.`;
+    } else {
+      verdict = 'postpone';
+      verdictBadge = matchingMilestone
+        ? `MEJOR EN ${formatPeriodShort(matchingMilestone.releasePeriod).toUpperCase()}`
+        : 'POSPONER';
+      verdictHeadline = matchingMilestone
+        ? `Programar para ${matchingMilestone.releaseLabel}`
+        : 'Posponer y Construir Fondo Previo';
+      verdictExplanation =
+        debtReleaseRecommendation ||
+        `Comprarlo hoy descalzaría tu liquidez del mes. Ahorrando ${formatCLP(
+          monthlySavingQuota
+        )}/mes lo adquieres sin deuda en ${estimatedReadyLabel}.`;
+    }
+  }
+
+  return {
+    itemId: item.id,
+    verdict,
+    verdictBadge,
+    verdictHeadline,
+    verdictExplanation,
+    cashPath: {
+      isViableToday: isCashViableToday,
+      safeAvailableToday,
+      currentSafePerDay,
+      resultingSafePerDay: Math.max(0, resultingSafePerDay),
+      remainingDaysInMonth,
+    },
+    installmentsPath: {
+      installmentsCount,
+      monthlyInstallment,
+      cardId: preferredCard?.id || null,
+      cardName,
+      availableCredit,
+      currentUsagePercent,
+      resultingUsagePercent,
+      fitsInCardCredit,
+      billingDay,
+      billingAdvice,
+      isViableInInstallments,
+    },
+    savingsGoalPath: {
+      monthlySavingQuota,
+      monthsRequired,
+      estimatedReadyPeriod,
+      estimatedReadyLabel,
+    },
+    debtReleaseMatch: {
+      hasUpcomingRelease: Boolean(matchingMilestone),
+      optimalPurchasePeriod: matchingMilestone?.releasePeriod || null,
+      optimalPurchaseLabel: matchingMilestone?.releaseLabel || null,
+      endPeriodLabel: matchingMilestone?.endLabel || null,
+      releasedMonthlyAmount: matchingMilestone?.releasedMonthlyAmount || 0,
+      releasedItemTitles: matchingMilestone?.itemTitles || [],
+      recommendationText: debtReleaseRecommendation,
+    },
+    antiImpulse: {
+      hourlyWage: Math.round(hourlyWage),
+      workHoursRequired,
+      workDaysRequired,
+      bestSavingsAccountName,
+      bestAnnualRatePercent,
+      opportunityCost1YearTotal,
+      opportunityCost1YearInterest,
+      isSubscription,
+      annualizedSubscriptionCost: amount * 12,
+      threeYearSubscriptionCost: amount * 36,
+      currentFixedRatioPercent,
+      newFixedRatioPercent,
+    },
+  };
+}
+
+/**
+ * Simula el impacto combinado de múltiples futuras compras seleccionadas en el Modo Carrito.
+ */
+export function evaluateFuturePurchasesCart(
+  selectedItems: FuturePurchase[],
+  context: {
+    period: string;
+    accounts: Account[];
+    recurringItems: RecurringItem[];
+    variableExpenses?: VariableExpense[];
+    payments?: MonthlyPayment[];
+    currentHealthScore?: number;
+  }
+): FuturePurchaseCartSimulation {
+  const {
+    period,
+    accounts,
+    recurringItems,
+    variableExpenses = [],
+    payments = [],
+    currentHealthScore = 85,
+  } = context;
+
+  const activeRecurring = recurringItems.filter((r) => isItemActiveInMonth(r, period));
+  const monthlyIncome = activeRecurring
+    .filter((r) => r.type === 'income')
+    .reduce((sum, r) => sum + r.amount, 0);
+  const monthlyFixedExpenses = activeRecurring
+    .filter((r) => r.type === 'expense')
+    .reduce((sum, r) => sum + r.amount, 0);
+  const variableSpentTotal = variableExpenses
+    .filter((v) => (v.period || v.date?.slice(0, 7)) === period)
+    .reduce((sum, v) => sum + v.amount, 0);
+
+  const currentFreeCashFlow = monthlyIncome - monthlyFixedExpenses - variableSpentTotal;
+
+  const now = new Date();
+  const [py, pm] = period.split('-').map(Number);
+  const isCurrentCalendarMonth =
+    py === now.getFullYear() && pm === now.getMonth() + 1;
+  const totalDaysInMonth = new Date(py || now.getFullYear(), pm || now.getMonth() + 1, 0).getDate();
+  const remainingDaysInMonth = isCurrentCalendarMonth
+    ? Math.max(1, totalDaysInMonth - now.getDate() + 1)
+    : totalDaysInMonth;
+
+  const checkingRawTotal = accounts
+    .filter((a) => a.type === 'checking')
+    .reduce((sum, a) => sum + (a.current_balance || 0), 0);
+  const checkingAvailableAfterVar = Math.max(0, checkingRawTotal - variableSpentTotal);
+  const paidRecurringIds = new Set(
+    payments
+      .filter((p) => p.target_type === 'recurring_item' && p.period === period && p.is_paid)
+      .map((p) => p.target_id)
+  );
+  const pendingFixedExpenses = activeRecurring
+    .filter((r) => r.type === 'expense' && !paidRecurringIds.has(r.id))
+    .reduce((sum, r) => sum + r.amount, 0);
+
+  const effectiveFreeBudget = Math.max(
+    currentFreeCashFlow,
+    checkingAvailableAfterVar - pendingFixedExpenses
+  );
+  const currentSafePerDay = Math.max(
+    0,
+    Math.round(effectiveFreeBudget / remainingDaysInMonth)
+  );
+
+  let totalCatalogValue = 0;
+  let immediateCashOutflow = 0;
+  let additionalInstallmentsMonthly = 0;
+  let additionalSubscriptionsMonthly = 0;
+
+  for (const item of selectedItems) {
+    const amt = Math.max(0, item.amount || 0);
+    totalCatalogValue += amt;
+    if (item.payment_mode === 'recurring_subscription' || item.category === 'suscripcion') {
+      additionalSubscriptionsMonthly += amt;
+    } else if (item.payment_mode === 'installments') {
+      const n = Math.max(1, item.installments_count || 3);
+      additionalInstallmentsMonthly += Math.round(amt / n);
+    } else {
+      immediateCashOutflow += amt;
+    }
+  }
+
+  const additionalMonthlyOutflow =
+    additionalInstallmentsMonthly + additionalSubscriptionsMonthly;
+  const totalThisMonthImpact = immediateCashOutflow + additionalMonthlyOutflow;
+  const projectedFreeCashFlow = currentFreeCashFlow - totalThisMonthImpact;
+  const projectedSafePerDay = Math.max(
+    0,
+    Math.round((effectiveFreeBudget - totalThisMonthImpact) / remainingDaysInMonth)
+  );
+
+  // Estimar impacto en el Score de Salud Financiera (0-100)
+  let scorePenalty = 0;
+  if (projectedFreeCashFlow < 0) scorePenalty += 25;
+  else if (projectedSafePerDay < 8000 && totalThisMonthImpact > 0) scorePenalty += 12;
+
+  const newFixedRatio =
+    monthlyIncome > 0
+      ? ((monthlyFixedExpenses + additionalMonthlyOutflow) / monthlyIncome) * 100
+      : 0;
+  if (newFixedRatio > 65) scorePenalty += 15;
+  else if (newFixedRatio > 55 && additionalMonthlyOutflow > 0) scorePenalty += 8;
+
+  const projectedHealthScore = Math.max(
+    10,
+    Math.min(100, Math.round(currentHealthScore - scorePenalty))
+  );
+
+  let cartVerdict: PurchaseViabilityVerdict = 'viable_today';
+  let cartVerdictLabel = 'CARRITO VIABLE HOY';
+  if (selectedItems.length === 0) {
+    cartVerdict = 'viable_today';
+    cartVerdictLabel = 'SELECCIONA ÍTEMS PARA SIMULAR';
+  } else if (projectedFreeCashFlow < 0 || projectedSafePerDay < 4000) {
+    cartVerdict = 'postpone';
+    cartVerdictLabel = 'RIESGO DE DESCALCE COMBINADO';
+  } else if (projectedSafePerDay < 8000 || scorePenalty >= 10) {
+    cartVerdict = 'viable_planned';
+    cartVerdictLabel = 'ESCALONAR COMPRAS EN MESES';
+  }
+
+  return {
+    selectedCount: selectedItems.length,
+    totalCatalogValue,
+    immediateCashOutflow,
+    additionalMonthlyOutflow,
+    additionalInstallmentsMonthly,
+    additionalSubscriptionsMonthly,
+    currentFreeCashFlow,
+    projectedFreeCashFlow,
+    currentSafePerDay,
+    projectedSafePerDay,
+    currentHealthScore,
+    projectedHealthScore,
+    cartVerdict,
+    cartVerdictLabel,
+  };
+}
+

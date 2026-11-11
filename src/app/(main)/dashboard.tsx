@@ -19,6 +19,7 @@ import {
   LayoutGrid,
   Lightbulb,
   PiggyBank,
+  ShoppingBag,
   Sparkles,
   User as UserIcon,
   Wallet,
@@ -27,6 +28,7 @@ import { ScreenContainer } from '@/components/layout/ScreenContainer';
 import { CreditCardsSection } from '@/components/finance/CreditCardsSection';
 import { ExecutiveSummarySection } from '@/components/finance/ExecutiveSummarySection';
 import { FixedItemsSection } from '@/components/finance/FixedItemsSection';
+import { FuturePurchasesSection } from '@/components/finance/FuturePurchasesSection';
 import { SavingsForecastSection } from '@/components/finance/SavingsForecastSection';
 import { WalletSection } from '@/components/finance/WalletSection';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -40,15 +42,20 @@ import {
   addRecurringSubItem,
   createAccount,
   CreateAccountInput,
+  createFuturePurchase,
+  CreateFuturePurchaseInput,
   createRecurringItem,
   CreateRecurringItemInput,
   createVariableExpense,
   CreateVariableExpenseInput,
   deleteAccount,
+  deleteFuturePurchase,
   deleteRecurringItem,
   deleteVariableExpense,
+  FuturePurchase,
   getAccounts,
   getCurrentUser,
+  getFuturePurchases,
   getMonthlyPayments,
   getRecurringItems,
   getVariableExpenses,
@@ -58,6 +65,8 @@ import {
   toggleMonthlyPayment,
   updateAccount,
   UpdateAccountInput,
+  updateFuturePurchase,
+  UpdateFuturePurchaseInput,
   updateRecurringItem,
   UpdateRecurringItemInput,
   updateVariableExpense,
@@ -79,7 +88,7 @@ import { generateFinancialIntelligence } from '@/lib/intelligence';
 import { usePrivacy } from '@/context/PrivacyContext';
 import { colors, radius } from '@/theme/tokens';
 
-type DashboardTab = 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings';
+type DashboardTab = 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings' | 'future_purchases';
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -98,6 +107,7 @@ export default function DashboardScreen() {
   const [recurringItems, setRecurringItems] = useState<RecurringItem[]>([]);
   const [payments, setPayments] = useState<MonthlyPayment[]>([]);
   const [variableExpenses, setVariableExpenses] = useState<VariableExpense[]>([]);
+  const [futurePurchases, setFuturePurchases] = useState<FuturePurchase[]>([]);
 
   const mainScrollRef = useRef<ScrollView>(null);
 
@@ -106,16 +116,18 @@ export default function DashboardScreen() {
   }, []);
 
   const loadAllData = useCallback(async () => {
-    const [accList, recList, payList, varList] = await Promise.all([
+    const [accList, recList, payList, varList, fpList] = await Promise.all([
       getAccounts(),
       getRecurringItems(),
       getMonthlyPayments(),
       getVariableExpenses(),
+      getFuturePurchases(),
     ]);
     setAccounts(accList);
     setRecurringItems(recList);
     setPayments(payList);
     setVariableExpenses(varList);
+    setFuturePurchases(fpList);
   }, []);
 
   useEffect(() => {
@@ -147,9 +159,10 @@ export default function DashboardScreen() {
       recurringItems,
       payments,
       variableExpenses,
+      futurePurchases,
       period,
     });
-  }, [accounts, recurringItems, payments, variableExpenses, period, syncFinancialData]);
+  }, [accounts, recurringItems, payments, variableExpenses, futurePurchases, period, syncFinancialData]);
 
   // Cargar plantilla inicial basada en el Excel y el Motor de Ahorro Dual
   const handleSeedExcelTemplate = async () => {
@@ -424,6 +437,24 @@ export default function DashboardScreen() {
     await loadAllData();
   };
 
+  const handleCreateFuturePurchase = async (input: CreateFuturePurchaseInput) => {
+    await createFuturePurchase(input);
+    await loadAllData();
+  };
+
+  const handleUpdateFuturePurchase = async (
+    id: string,
+    input: UpdateFuturePurchaseInput
+  ) => {
+    await updateFuturePurchase(id, input);
+    await loadAllData();
+  };
+
+  const handleDeleteFuturePurchase = async (id: string) => {
+    await deleteFuturePurchase(id);
+    await loadAllData();
+  };
+
   // Proyección dinámica del Patrimonio Neto y Liquidez según el mes seleccionado (period)
   const currentBasePeriod = getCurrentPeriod();
   const isCurrentPeriod = period === currentBasePeriod;
@@ -468,8 +499,9 @@ export default function DashboardScreen() {
         accounts,
         recurringItems,
         variableExpenses,
+        futurePurchases,
       }),
-    [period, accounts, recurringItems, variableExpenses, isPrivacyEnabled]
+    [period, accounts, recurringItems, variableExpenses, futurePurchases, isPrivacyEnabled]
   );
   const topInsight = intelligenceReport.insights[0];
 
@@ -963,6 +995,32 @@ export default function DashboardScreen() {
               {isDesktop ? 'Ahorro y Pronóstico' : 'Ahorro'}
             </Text>
           </Pressable>
+
+          <Pressable
+            onPress={() => setActiveTab('future_purchases')}
+            style={[
+              styles.moduleTab,
+              activeTab === 'future_purchases' && styles.moduleTabActive,
+            ]}
+          >
+            <ShoppingBag
+              size={14}
+              color={
+                activeTab === 'future_purchases'
+                  ? colors.buttonPrimaryText
+                  : colors.textSecondary
+              }
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.moduleTabText,
+                activeTab === 'future_purchases' && styles.moduleTabTextActive,
+              ]}
+            >
+              {isDesktop ? 'Compras Futuras' : 'Deseos'}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Contenido del Módulo Seleccionado */}
@@ -1038,6 +1096,23 @@ export default function DashboardScreen() {
             onCreateAccount={handleCreateAccount}
             onUpdateAccount={handleUpdateAccount}
             onDeleteAccount={handleDeleteAccount}
+          />
+        ) : null}
+
+        {activeTab === 'future_purchases' ? (
+          <FuturePurchasesSection
+            period={period}
+            accounts={accounts}
+            recurringItems={recurringItems}
+            variableExpenses={variableExpenses}
+            payments={payments}
+            futurePurchases={futurePurchases}
+            overallHealthScore={intelligenceReport.overallScore}
+            onCreateFuturePurchase={handleCreateFuturePurchase}
+            onUpdateFuturePurchase={handleUpdateFuturePurchase}
+            onDeleteFuturePurchase={handleDeleteFuturePurchase}
+            onCreateVariableExpense={handleCreateVariableExpense}
+            onCreateRecurringItem={handleCreateRecurringItem}
           />
         ) : null}
       </View>

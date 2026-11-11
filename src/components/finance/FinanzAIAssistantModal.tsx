@@ -34,6 +34,16 @@ const ACCENTS = {
 
 const QUICK_PILLS = [
   {
+    id: 'wishlist_today',
+    label: '🛍️ ¿Qué de mis futuras compras puedo comprar hoy?',
+    query: '¿Qué de mis futuras compras puedo comprar hoy?',
+  },
+  {
+    id: 'wishlist_plan',
+    label: '📅 ¿Cuál es mi plan óptimo para comprar mi lista de deseos?',
+    query: '¿Cuál es mi plan óptimo para comprar mi lista de deseos?',
+  },
+  {
     id: 'future_save_april',
     label: '📅 ¿Cuánto podré ahorrar en abril?',
     query: '¿Cuánto podré ahorrar en abril?',
