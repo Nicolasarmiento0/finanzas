@@ -1,5 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,6 +11,7 @@ import {
 } from 'react-native';
 import {
   AlertTriangle,
+  ArrowUp,
   Briefcase,
   Calendar,
   CheckCircle2,
@@ -76,6 +80,7 @@ interface FuturePurchasesSectionProps {
   payments: MonthlyPayment[];
   futurePurchases: FuturePurchase[];
   overallHealthScore: number;
+  onScrollToEdit?: (localY?: number) => void;
   onCreateFuturePurchase: (input: CreateFuturePurchaseInput) => Promise<void>;
   onUpdateFuturePurchase: (id: string, input: UpdateFuturePurchaseInput) => Promise<void>;
   onDeleteFuturePurchase: (id: string) => Promise<void>;
@@ -273,6 +278,7 @@ export function FuturePurchasesSection({
   payments,
   futurePurchases,
   overallHealthScore,
+  onScrollToEdit,
   onCreateFuturePurchase,
   onUpdateFuturePurchase,
   onDeleteFuturePurchase,
@@ -281,6 +287,64 @@ export function FuturePurchasesSection({
 }: FuturePurchasesSectionProps) {
   const { isDesktop } = useResponsive();
   usePrivacy(); // Suscripción reactiva al modo privado global
+
+  // Referencias y animaciones para desplazar y resaltar el módulo de edición
+  const formCardRef = useRef<View>(null);
+  const formCardYRef = useRef<number>(0);
+  const editHighlightAnim = useRef(new Animated.Value(0)).current;
+  const formEntranceAnim = useRef(new Animated.Value(1)).current;
+
+  const triggerEditFocusAnimation = useCallback(() => {
+    formEntranceAnim.setValue(0);
+    editHighlightAnim.setValue(0);
+
+    Animated.parallel([
+      Animated.timing(formEntranceAnim, {
+        toValue: 1,
+        duration: 280,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      Animated.sequence([
+        Animated.timing(editHighlightAnim, {
+          toValue: 1,
+          duration: 320,
+          useNativeDriver: false,
+        }),
+        Animated.timing(editHighlightAnim, {
+          toValue: 0.35,
+          duration: 240,
+          useNativeDriver: false,
+        }),
+        Animated.timing(editHighlightAnim, {
+          toValue: 1,
+          duration: 280,
+          useNativeDriver: false,
+        }),
+        Animated.timing(editHighlightAnim, {
+          toValue: 0,
+          duration: 520,
+          useNativeDriver: false,
+        }),
+      ]),
+    ]).start();
+  }, [editHighlightAnim, formEntranceAnim]);
+
+  const scrollToEditForm = useCallback(() => {
+    setTimeout(() => {
+      if (Platform.OS === 'web') {
+        const el = formCardRef.current as unknown as HTMLElement | null;
+        if (el && typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({
+            behavior: 'smooth',
+            block: isDesktop ? 'center' : 'start',
+          });
+          return;
+        }
+      }
+      onScrollToEdit?.(formCardYRef.current);
+    }, 75);
+  }, [isDesktop, onScrollToEdit]);
 
   // Estado del formulario de creación / edición
   const [showForm, setShowForm] = useState(false);
@@ -439,6 +503,8 @@ export function FuturePurchasesSection({
     setTargetAccountId(item.target_account_id);
     setNotes(item.notes || '');
     setShowForm(true);
+    triggerEditFocusAnimation();
+    scrollToEditForm();
   };
 
   const handleSaveForm = async () => {
@@ -647,16 +713,12 @@ export function FuturePurchasesSection({
             active: statusView === 'purchased',
           },
         ]}
-        onPressOrb={() => {
-          resetForm();
-          setShowForm((prev) => !prev);
-        }}
       />
 
-      {/* CABECERA EJECUTIVA DE CAPACIDAD DE COMPRA (3 Tarjetas) */}
+      {/* CABECERA EJECUTIVA DE CAPACIDAD DE COMPRA (3 Tarjetas Bento) */}
       <View style={[styles.kpiGrid, isDesktop && styles.kpiGridDesktop]}>
         {/* Tarjeta 1: Presupuesto Seguro para Compras Hoy */}
-        <GlassCard style={styles.kpiCard}>
+        <View style={[styles.kpiCard, styles.bentoKpiCard]}>
           <View style={styles.kpiHeaderRow}>
             <View style={[styles.kpiIconBadge, styles.kpiIconEmerald]}>
               <Wallet size={15} color="#34D399" />
@@ -670,10 +732,10 @@ export function FuturePurchasesSection({
             Protegiendo tus gastos fijos y un colchón saludable de $8.000/día (
             actual: {formatCLP(baselineEval.cashPath.currentSafePerDay)}/día).
           </Text>
-        </GlassCard>
+        </View>
 
         {/* Tarjeta 2: Próximo Impulso de Liquidez (Smart Debt-Release) */}
-        <GlassCard style={styles.kpiCard}>
+        <View style={[styles.kpiCard, styles.bentoKpiCardElevated]}>
           <View style={styles.kpiHeaderRow}>
             <View style={[styles.kpiIconBadge, styles.kpiIconBlue]}>
               <Calendar size={15} color="#38BDF8" />
@@ -700,10 +762,10 @@ export function FuturePurchasesSection({
               </Text>
             </>
           )}
-        </GlassCard>
+        </View>
 
         {/* Tarjeta 3: Simulador de Carrito Activo */}
-        <GlassCard style={styles.kpiCard}>
+        <View style={[styles.kpiCard, styles.bentoKpiCard]}>
           <View style={styles.kpiHeaderRow}>
             <View style={[styles.kpiIconBadge, styles.kpiIconAmber]}>
               <ShoppingCart size={15} color="#F59E0B" />
@@ -740,10 +802,25 @@ export function FuturePurchasesSection({
               </Text>
             </>
           )}
-        </GlassCard>
+        </View>
       </View>
 
       {/* BARRA DE PLANTILLAS RÁPIDAS 1-TOQUE + BOTÓN NUEVA COMPRA */}
+      <Animated.View
+        ref={formCardRef}
+        onLayout={(e) => {
+          formCardYRef.current = e.nativeEvent.layout.y;
+        }}
+        style={[
+          styles.animatedFormCardWrapper,
+          {
+            borderColor: editHighlightAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['rgba(255, 255, 255, 0)', '#34D399'],
+            }),
+          },
+        ]}
+      >
       <GlassCard>
         <View style={styles.catalogHeaderRow}>
           <View style={styles.catalogTitleCol}>
@@ -827,7 +904,22 @@ export function FuturePurchasesSection({
 
         {/* FORMULARIO DESPLEGABLE DE REGISTRO / EDICIÓN */}
         {showForm ? (
-          <View style={styles.formContainer}>
+          <Animated.View
+            style={[
+              styles.formContainer,
+              {
+                opacity: formEntranceAnim,
+                transform: [
+                  {
+                    translateY: formEntranceAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-10, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
             <Text style={styles.formHeading}>
               {editingId
                 ? 'Editar Proyecto de Compra / Suscripción'
@@ -1071,9 +1163,10 @@ export function FuturePurchasesSection({
                 loading={submitting}
               />
             </View>
-          </View>
+          </Animated.View>
         ) : null}
       </GlassCard>
+      </Animated.View>
 
       {/* BARRA ACTIVA DEL MODO CARRITO (Cuando hay >= 1 ítems seleccionados) */}
       {selectedCartItems.length > 0 ? (
@@ -1643,12 +1736,47 @@ export function FuturePurchasesSection({
 
                 <View style={styles.cardIconActions}>
                   <Pressable
-                    onPress={() => handleStartEdit(item)}
-                    style={styles.iconBtn}
+                    onPress={() => {
+                      if (editingId === item.id && showForm) {
+                        triggerEditFocusAnimation();
+                        scrollToEditForm();
+                      } else {
+                        handleStartEdit(item);
+                      }
+                    }}
+                    style={[
+                      styles.iconBtn,
+                      editingId === item.id && showForm && styles.iconBtnEditing,
+                    ]}
                     hitSlop={8}
+                    accessibilityLabel={`Editar ${item.title}`}
                   >
-                    <Edit3 size={15} color={colors.textSecondary} />
+                    <Edit3
+                      size={15}
+                      color={
+                        editingId === item.id && showForm
+                          ? '#34D399'
+                          : colors.textSecondary
+                      }
+                    />
                   </Pressable>
+                  {editingId === item.id && showForm ? (
+                    <Pressable
+                      onPress={() => {
+                        triggerEditFocusAnimation();
+                        scrollToEditForm();
+                      }}
+                      style={({ pressed }) => [
+                        styles.editingIndicatorPill,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <ArrowUp size={11} color="#34D399" />
+                      <Text style={styles.editingIndicatorText}>
+                        Editando arriba
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     onPress={() => onDeleteFuturePurchase(item.id)}
                     style={styles.iconBtn}
@@ -1671,7 +1799,7 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   kpiGrid: {
-    gap: 12,
+    gap: 14,
   },
   kpiGridDesktop: {
     flexDirection: 'row',
@@ -1679,6 +1807,20 @@ const styles = StyleSheet.create({
   kpiCard: {
     flex: 1,
     gap: 6,
+  },
+  bentoKpiCard: {
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
+    padding: 20,
+  },
+  bentoKpiCardElevated: {
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: colors.bentoBorderStrong,
+    backgroundColor: colors.bentoCardElevated,
+    padding: 20,
   },
   kpiHeaderRow: {
     flexDirection: 'row',
@@ -1959,8 +2101,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
   },
   filterPillActive: {
     backgroundColor: colors.buttonPrimaryBg,
@@ -2213,11 +2355,11 @@ const styles = StyleSheet.create({
   },
   pathBox: {
     flex: 1,
-    padding: 11,
-    borderRadius: radius.md,
+    padding: 14,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 4,
   },
   pathHeader: {
@@ -2252,12 +2394,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    backgroundColor: colors.bentoCardElevated,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.07)',
+    borderColor: colors.bentoBorder,
   },
   antiImpulseText: {
     color: colors.textSecondary,
@@ -2316,6 +2458,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.glassBorder,
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  iconBtnEditing: {
+    borderColor: 'rgba(52, 211, 153, 0.45)',
+    backgroundColor: 'rgba(52, 211, 153, 0.12)',
+  },
+  editingIndicatorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+    backgroundColor: 'rgba(52, 211, 153, 0.1)',
+  },
+  editingIndicatorText: {
+    color: '#34D399',
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  animatedFormCardWrapper: {
+    borderRadius: 30,
+    borderWidth: 1.5,
   },
   pressed: {
     opacity: 0.82,

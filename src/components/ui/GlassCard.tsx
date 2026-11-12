@@ -28,11 +28,11 @@ const styles = StyleSheet.create({
   outer: {
     width: '100%',
     alignSelf: 'stretch',
-    borderRadius: radius.lg,
+    borderRadius: 28,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassSurface,
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoShell,
   },
   blur: {
     width: '100%',
@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
   },
   inner: {
     width: '100%',
-    padding: 26,
+    padding: 24,
   },
   innerMobile: {
     width: '100%',

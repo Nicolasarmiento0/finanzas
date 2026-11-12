@@ -101,7 +101,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const { isPrivacyEnabled } = usePrivacy();
-  const { syncFinancialData, openFinanzAI } = useFinanzAI();
+  const { syncFinancialData } = useFinanzAI();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -117,9 +117,15 @@ export default function DashboardScreen() {
   const [futurePurchases, setFuturePurchases] = useState<FuturePurchase[]>([]);
 
   const mainScrollRef = useRef<ScrollView>(null);
+  const futurePurchasesTopYRef = useRef<number>(0);
 
   const handleScrollToCardsEdit = useCallback(() => {
     mainScrollRef.current?.scrollTo({ y: 0, animated: true });
+  }, []);
+
+  const handleScrollToFuturePurchaseEdit = useCallback((localY?: number) => {
+    const targetY = Math.max(0, futurePurchasesTopYRef.current + (localY ?? 0) - 16);
+    mainScrollRef.current?.scrollTo({ y: targetY, animated: true });
   }, []);
 
   const loadAllData = useCallback(async () => {
@@ -646,7 +652,6 @@ export default function DashboardScreen() {
               onPress: () => router.push('/(main)/profile'),
             },
           ]}
-          onPressOrb={() => openFinanzAI()}
           footerContent={
             <View style={{ gap: 12 }}>
               <ScrollView
@@ -808,163 +813,169 @@ export default function DashboardScreen() {
           }
         />
 
-        {/* Navegación Interna de Módulos (Resumen | Fijos | Tarjetas | Ahorro) */}
-        <View style={styles.moduleTabsBar}>
-          <Pressable
-            onPress={() => setActiveTab('summary')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'summary' && styles.moduleTabActive,
-            ]}
+        {/* Navegación Interna Horizontal de Módulos (Resumen | Billetera | Fijos | Tarjetas | Ahorro | Deseos) */}
+        <View style={styles.moduleTabsBarShell}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.moduleTabsScrollContent}
           >
-            <LayoutGrid
-              size={14}
-              color={
-                activeTab === 'summary'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('summary')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'summary' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'summary' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Resumen Ejecutivo' : 'Resumen'}
-            </Text>
-          </Pressable>
+              <LayoutGrid
+                size={14}
+                color={
+                  activeTab === 'summary'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'summary' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Resumen Ejecutivo' : 'Resumen'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('wallet')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'wallet' && styles.moduleTabActive,
-            ]}
-          >
-            <Wallet
-              size={14}
-              color={
-                activeTab === 'wallet'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('wallet')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'wallet' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'wallet' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Cuentas & Variables' : 'Billetera'}
-            </Text>
-          </Pressable>
+              <Wallet
+                size={14}
+                color={
+                  activeTab === 'wallet'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'wallet' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Cuentas & Variables' : 'Billetera'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('fixed')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'fixed' && styles.moduleTabActive,
-            ]}
-          >
-            <CheckSquare
-              size={14}
-              color={
-                activeTab === 'fixed'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('fixed')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'fixed' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'fixed' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Gastos e Ingresos Fijos' : 'Fijos'}
-            </Text>
-          </Pressable>
+              <CheckSquare
+                size={14}
+                color={
+                  activeTab === 'fixed'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'fixed' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Gastos e Ingresos Fijos' : 'Gastos Fijos'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('cards')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'cards' && styles.moduleTabActive,
-            ]}
-          >
-            <CreditCard
-              size={14}
-              color={
-                activeTab === 'cards'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('cards')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'cards' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'cards' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Tarjetas y Cupos' : 'Tarjetas'}
-            </Text>
-          </Pressable>
+              <CreditCard
+                size={14}
+                color={
+                  activeTab === 'cards'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'cards' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Tarjetas y Cupos' : 'Tarjetas'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('savings')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'savings' && styles.moduleTabActive,
-            ]}
-          >
-            <PiggyBank
-              size={14}
-              color={
-                activeTab === 'savings'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('savings')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'savings' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'savings' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Ahorro y Pronóstico' : 'Ahorro'}
-            </Text>
-          </Pressable>
+              <PiggyBank
+                size={14}
+                color={
+                  activeTab === 'savings'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'savings' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Ahorro y Pronóstico' : 'Ahorro'}
+              </Text>
+            </Pressable>
 
-          <Pressable
-            onPress={() => setActiveTab('future_purchases')}
-            style={[
-              styles.moduleTab,
-              activeTab === 'future_purchases' && styles.moduleTabActive,
-            ]}
-          >
-            <ShoppingBag
-              size={14}
-              color={
-                activeTab === 'future_purchases'
-                  ? colors.buttonPrimaryText
-                  : colors.textSecondary
-              }
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => setActiveTab('future_purchases')}
               style={[
-                styles.moduleTabText,
-                activeTab === 'future_purchases' && styles.moduleTabTextActive,
+                styles.moduleTab,
+                activeTab === 'future_purchases' && styles.moduleTabActive,
               ]}
             >
-              {isDesktop ? 'Compras Futuras' : 'Deseos'}
-            </Text>
-          </Pressable>
+              <ShoppingBag
+                size={14}
+                color={
+                  activeTab === 'future_purchases'
+                    ? colors.buttonPrimaryText
+                    : colors.textSecondary
+                }
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.moduleTabText,
+                  activeTab === 'future_purchases' && styles.moduleTabTextActive,
+                ]}
+              >
+                {isDesktop ? 'Compras Futuras' : 'Compras Futuras'}
+              </Text>
+            </Pressable>
+          </ScrollView>
         </View>
 
         {/* Contenido del Módulo Seleccionado */}
@@ -1044,20 +1055,27 @@ export default function DashboardScreen() {
         ) : null}
 
         {activeTab === 'future_purchases' ? (
-          <FuturePurchasesSection
-            period={period}
-            accounts={accounts}
-            recurringItems={recurringItems}
-            variableExpenses={variableExpenses}
-            payments={payments}
-            futurePurchases={futurePurchases}
-            overallHealthScore={intelligenceReport.overallScore}
-            onCreateFuturePurchase={handleCreateFuturePurchase}
-            onUpdateFuturePurchase={handleUpdateFuturePurchase}
-            onDeleteFuturePurchase={handleDeleteFuturePurchase}
-            onCreateVariableExpense={handleCreateVariableExpense}
-            onCreateRecurringItem={handleCreateRecurringItem}
-          />
+          <View
+            onLayout={(e) => {
+              futurePurchasesTopYRef.current = e.nativeEvent.layout.y;
+            }}
+          >
+            <FuturePurchasesSection
+              period={period}
+              accounts={accounts}
+              recurringItems={recurringItems}
+              variableExpenses={variableExpenses}
+              payments={payments}
+              futurePurchases={futurePurchases}
+              overallHealthScore={intelligenceReport.overallScore}
+              onScrollToEdit={handleScrollToFuturePurchaseEdit}
+              onCreateFuturePurchase={handleCreateFuturePurchase}
+              onUpdateFuturePurchase={handleUpdateFuturePurchase}
+              onDeleteFuturePurchase={handleDeleteFuturePurchase}
+              onCreateVariableExpense={handleCreateVariableExpense}
+              onCreateRecurringItem={handleCreateRecurringItem}
+            />
+          </View>
         ) : null}
       </View>
     </ScreenContainer>
@@ -1317,12 +1335,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: radius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    backgroundColor: 'rgba(20, 24, 34, 0.85)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: colors.bentoBorder,
   },
   debtCompChipText: {
     color: colors.textSecondary,
@@ -1361,11 +1379,11 @@ const styles = StyleSheet.create({
   },
   seedBanner: {
     width: '100%',
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorderFocused,
-    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderColor: colors.bentoBorderStrong,
+    backgroundColor: colors.bentoCard,
     gap: 12,
   },
   seedBannerTextCol: {
@@ -1387,33 +1405,38 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 17,
   },
-  moduleTabsBar: {
-    flexDirection: 'row',
-    padding: 4,
-    gap: 4,
-    borderRadius: radius.lg,
+  moduleTabsBarShell: {
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoShell,
+    padding: 5,
+    overflow: 'hidden',
+  },
+  moduleTabsScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexGrow: 1,
   },
   moduleTab: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 6,
     paddingVertical: 11,
-    paddingHorizontal: 6,
-    borderRadius: radius.md,
+    paddingHorizontal: 14,
+    borderRadius: 17,
   },
   moduleTabActive: {
     backgroundColor: colors.buttonPrimaryBg,
   },
   moduleTabText: {
     color: colors.textSecondary,
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    flexShrink: 1,
   },
   moduleTabTextActive: {
     color: colors.buttonPrimaryText,
@@ -1421,11 +1444,11 @@ const styles = StyleSheet.create({
   },
   intelligenceHighlightCard: {
     marginTop: 14,
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.3)',
-    backgroundColor: 'rgba(52, 211, 153, 0.04)',
+    borderColor: 'rgba(52, 211, 153, 0.28)',
+    backgroundColor: 'rgba(20, 24, 34, 0.9)',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',

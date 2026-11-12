@@ -782,7 +782,7 @@ export function CreditCardsSection({
             </Text>
           </View>
 
-          {/* Fila de Botones Circulares (+ Nueva, Editar) + Orbe Azul */}
+          {/* Fila de Botones Circulares (+ Nueva, Editar) */}
           <View style={styles.heroActionRow}>
             <View style={styles.heroCircleActionsGroup}>
               <Pressable
@@ -846,52 +846,6 @@ export function CreditCardsSection({
                 </Text>
               </Pressable>
             </View>
-
-            {/* Orbe Esférico Luminoso Interactivo (como el orbe azul con ojitos de la foto) */}
-            <Pressable
-              onPress={() => setShowAllCardsExpanded((prev) => !prev)}
-              style={({ pressed }) => [
-                styles.heroCompanionOrbOuter,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Svg width={52} height={52} viewBox="0 0 56 56">
-                <Defs>
-                  <RadialGradient id="companionOrbGrad" cx="38%" cy="32%" r="60%">
-                    <Stop offset="0%" stopColor="#93C5FD" stopOpacity="1" />
-                    <Stop offset="45%" stopColor="#2563EB" stopOpacity="0.95" />
-                    <Stop offset="85%" stopColor="#1E3A8A" stopOpacity="0.9" />
-                    <Stop offset="100%" stopColor="#172554" stopOpacity="0.4" />
-                  </RadialGradient>
-                </Defs>
-                <Circle
-                  cx="28"
-                  cy="28"
-                  r="26"
-                  fill="rgba(255,255,255,0.07)"
-                  stroke="rgba(255,255,255,0.22)"
-                  strokeWidth="1.2"
-                />
-                <Circle cx="28" cy="29" r="17" fill="url(#companionOrbGrad)" />
-                {/* Dos pequeños destellos blancos verticales como en la foto */}
-                <Rect
-                  x="27"
-                  y="23"
-                  width="2.6"
-                  height="6.2"
-                  rx="1.3"
-                  fill="#FFFFFF"
-                />
-                <Rect
-                  x="32"
-                  y="23"
-                  width="2.6"
-                  height="6.2"
-                  rx="1.3"
-                  fill="#FFFFFF"
-                />
-              </Svg>
-            </Pressable>
           </View>
         </View>
 
@@ -2542,7 +2496,7 @@ const styles = StyleSheet.create({
   heroActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingTop: 4,
   },
   heroCircleActionsGroup: {
@@ -2577,13 +2531,6 @@ const styles = StyleSheet.create({
   heroCircleActionLabelActive: {
     color: '#050505',
     fontWeight: '700',
-  },
-  heroCompanionOrbOuter: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   walletAndBentoCol: {
     flexDirection: 'column',

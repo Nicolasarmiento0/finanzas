@@ -57,14 +57,14 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: colors.glassInput,
+    borderColor: colors.bentoBorder,
+    backgroundColor: 'rgba(20, 24, 34, 0.72)',
     paddingHorizontal: 16,
     color: colors.textPrimary,
     fontSize: 15,
   },
   inputFocused: {
     borderColor: colors.glassBorderFocused,
-    backgroundColor: colors.glassSurfaceStrong,
+    backgroundColor: colors.bentoCardElevated,
   },
 });

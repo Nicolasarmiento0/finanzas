@@ -226,8 +226,8 @@ const styles = StyleSheet.create({
   sidebarWrapper: {
     width: 260,
     borderRightWidth: 1,
-    borderRightColor: colors.glassBorder,
-    backgroundColor: colors.glassSurface,
+    borderRightColor: colors.bentoBorder,
+    backgroundColor: colors.obsidianHero,
   },
   sidebarBlur: {
     flex: 1,
@@ -351,8 +351,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(12, 12, 14, 0.72)',
+    borderColor: colors.bentoBorderStrong,
+    backgroundColor: 'rgba(11, 16, 27, 0.86)',
   },
   bottomBarBlur: {
     width: '100%',

@@ -586,7 +586,6 @@ export function SavingsForecastSection({
               }),
           },
         ]}
-        onPressOrb={openCreateForm}
       />
 
       {/* Cabecera del Módulo con Botón para Agregar Nueva Cuenta de Ahorro */}
@@ -2016,8 +2015,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
   },
   accountSelectorChipActive: {
     backgroundColor: colors.buttonPrimaryBg,
@@ -2641,11 +2640,11 @@ const styles = StyleSheet.create({
   },
   acceleratedBenefitCard: {
     marginTop: 12,
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.35)',
-    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    backgroundColor: colors.bentoCardElevated,
     gap: 10,
   },
   acceleratedBenefitHeader: {
@@ -2667,11 +2666,11 @@ const styles = StyleSheet.create({
   acceleratedBenefitItem: {
     flex: 1,
     minWidth: 120,
-    padding: 10,
-    borderRadius: radius.sm,
+    padding: 12,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
   },
   acceleratedBenefitItemHighlight: {
     borderColor: 'rgba(52, 211, 153, 0.45)',
@@ -2903,11 +2902,11 @@ const styles = StyleSheet.create({
   },
   pointInspectorBox: {
     marginTop: 14,
-    padding: 12,
-    borderRadius: radius.md,
+    padding: 14,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCardElevated,
     gap: 6,
   },
   inspectorHeader: {
@@ -2994,11 +2993,11 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   expiringMonthBlock: {
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 10,
   },
   expiringMonthHeader: {

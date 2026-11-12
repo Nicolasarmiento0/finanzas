@@ -15,9 +15,7 @@ import {
   EyeOff,
   KeyRound,
   LogOut,
-  Mail,
   Share2,
-  ShieldCheck,
   User as UserIcon,
 } from 'lucide-react-native';
 import { ScreenContainer } from '@/components/layout/ScreenContainer';
@@ -203,7 +201,13 @@ export default function ProfileScreen() {
         {/* Hero Ambiental del Perfil */}
         <AmbientHeroCard
           capsuleLabel={`Configuración de Cuenta · ${user?.currency || 'CLP'}`}
-          capsuleIcon={<UserIcon size={13} color="#FFFFFF" />}
+          capsuleIcon={
+            initials ? (
+              <Text style={styles.capsuleInitials}>{initials}</Text>
+            ) : (
+              <UserIcon size={13} color="#FFFFFF" />
+            )
+          }
           flameCount={1}
           ringPercent={100}
           eyebrowLabel="Perfil sincronizado y activo"
@@ -233,30 +237,7 @@ export default function ProfileScreen() {
               onPress: handleLogout,
             },
           ]}
-          onPressOrb={handleCopyId}
         />
-
-        {/* Tarjeta de Cabecera del Perfil */}
-        <GlassCard>
-          <View style={styles.profileHeader}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitials}>{initials}</Text>
-            </View>
-
-            <View style={styles.profileInfoCol}>
-              <Text style={styles.eyebrow}>CONFIGURACIÓN DE CUENTA</Text>
-              <Text style={styles.userName}>{user?.name}</Text>
-              <Text style={styles.userEmail}>{user?.email}</Text>
-            </View>
-
-            <View style={styles.currencyBadge}>
-              <ShieldCheck size={14} color="#34D399" />
-              <Text style={styles.currencyBadgeText}>
-                {user?.currency || 'CLP'} · Activo
-              </Text>
-            </View>
-          </View>
-        </GlassCard>
 
         {/* Tarjeta de ID de Usuario para Compartir */}
         <GlassCard>
@@ -480,66 +461,11 @@ const styles = StyleSheet.create({
     gap: 20,
     paddingBottom: 32,
   },
-  profileHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  avatarCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.glassBorderFocused,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-  },
-  avatarInitials: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  profileInfoCol: {
-    flex: 1,
-    minWidth: 180,
-    gap: 3,
-  },
-  eyebrow: {
-    color: colors.textSecondary,
+  capsuleInitials: {
+    color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  userName: {
-    color: colors.textPrimary,
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  userEmail: {
-    color: colors.textSecondary,
-    fontSize: 13,
-  },
-  currencyBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.35)',
-    backgroundColor: 'rgba(52, 211, 153, 0.1)',
-  },
-  currencyBadgeText: {
-    color: '#34D399',
-    fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   sectionHeader: {
     width: '100%',
@@ -549,14 +475,14 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   sectionIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCardElevated,
   },
   sectionTitleCol: {
     flex: 1,
@@ -667,11 +593,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 12,
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.3)',
-    backgroundColor: 'rgba(52, 211, 153, 0.04)',
+    backgroundColor: colors.bentoCard,
     marginTop: 8,
   },
   userIdBox: {

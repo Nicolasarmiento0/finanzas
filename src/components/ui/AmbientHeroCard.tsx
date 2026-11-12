@@ -623,7 +623,7 @@ export function AmbientHeroCard({
         <Text style={styles.heroSubHint}>{subtitle}</Text>
       </View>
 
-      {/* Fila Inferior: Circunferencias 52x52 de Acción Rápida + Orbe Azul 52x52 */}
+      {/* Fila Inferior: Circunferencias 52x52 de Acción Rápida */}
       <View style={styles.heroActionRow}>
         <View style={styles.heroCircleActionsGroup}>
           {actions.map((action) => (
@@ -650,61 +650,6 @@ export function AmbientHeroCard({
             </Pressable>
           ))}
         </View>
-
-        <Pressable
-          onPress={onPressOrb}
-          disabled={!onPressOrb}
-          style={({ pressed }) => [
-            styles.heroCompanionOrbOuter,
-            pressed && onPressOrb ? styles.pressed : null,
-          ]}
-        >
-          <Svg width={52} height={52} viewBox="0 0 56 56">
-            <Defs>
-              <RadialGradient
-                id={`companionOrbGrad-${rawId}`}
-                cx="38%"
-                cy="32%"
-                r="60%"
-              >
-                <Stop offset="0%" stopColor="#93C5FD" stopOpacity="1" />
-                <Stop offset="45%" stopColor="#2563EB" stopOpacity="0.95" />
-                <Stop offset="85%" stopColor="#1E3A8A" stopOpacity="0.9" />
-                <Stop offset="100%" stopColor="#172554" stopOpacity="0.4" />
-              </RadialGradient>
-            </Defs>
-            <Circle
-              cx="28"
-              cy="28"
-              r="26"
-              fill="rgba(255,255,255,0.07)"
-              stroke="rgba(255,255,255,0.22)"
-              strokeWidth="1.2"
-            />
-            <Circle
-              cx="28"
-              cy="29"
-              r="17"
-              fill={`url(#companionOrbGrad-${rawId})`}
-            />
-            <Rect
-              x="27"
-              y="23"
-              width="2.6"
-              height="6.2"
-              rx="1.3"
-              fill="#FFFFFF"
-            />
-            <Rect
-              x="32"
-              y="23"
-              width="2.6"
-              height="6.2"
-              rx="1.3"
-              fill="#FFFFFF"
-            />
-          </Svg>
-        </Pressable>
       </View>
 
       {footerContent ? (
@@ -901,7 +846,7 @@ const styles = StyleSheet.create({
   heroActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingTop: 2,
   },
   heroCircleActionsGroup: {
@@ -934,13 +879,6 @@ const styles = StyleSheet.create({
   heroCircleActionLabelActive: {
     color: colors.buttonPrimaryText,
     fontWeight: '700',
-  },
-  heroCompanionOrbOuter: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   footerSlotWrap: {
     paddingTop: 6,

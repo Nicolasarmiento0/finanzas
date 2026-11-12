@@ -6,14 +6,10 @@ import {
   View,
 } from 'react-native';
 import {
-  Activity,
   AlertTriangle,
   ArrowRight,
   BookmarkCheck,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Coins,
   CreditCard,
   Flame,
   Info,
@@ -359,10 +355,14 @@ export function FinancialTipsSection({
             active: selectedTipCategory === 'all',
           },
         ]}
-        onPressOrb={() => setShowAddForm((prev) => !prev)}
+        footerContent={
+          <View style={styles.heroFooterRow}>
+            <PrivacyToggleButton />
+          </View>
+        }
       />
 
-      {/* 1. Consola de Inteligencia Financiera FinanzAI (Cabecera Ejecutiva) */}
+      {/* 1. Consola de Correlaciones y Reglas FinanzAI (Bento) */}
       <GlassCard>
         <View style={styles.headerRow}>
           <View style={styles.headerTextCol}>
@@ -379,42 +379,6 @@ export function FinancialTipsSection({
           </View>
 
           <View style={styles.headerActionsCol}>
-            {onChangePeriod ? (
-              <View style={styles.periodPicker}>
-                <Pressable
-                  onPress={() => onChangePeriod(shiftPeriod(period, -1))}
-                  style={({ pressed }) => [styles.periodIconBtn, pressed && styles.pressed]}
-                  accessibilityLabel="Mes anterior"
-                >
-                  <ChevronLeft size={16} color={colors.textPrimary} />
-                </Pressable>
-                <Text style={styles.periodText}>{formatPeriodFull(period)}</Text>
-                <Pressable
-                  onPress={() => onChangePeriod(shiftPeriod(period, 1))}
-                  style={({ pressed }) => [styles.periodIconBtn, pressed && styles.pressed]}
-                  accessibilityLabel="Mes siguiente"
-                >
-                  <ChevronRight size={16} color={colors.textPrimary} />
-                </Pressable>
-                {period !== getCurrentPeriod() ? (
-                  <Pressable
-                    onPress={() => onChangePeriod(getCurrentPeriod())}
-                    style={styles.todayChip}
-                    accessibilityLabel="Volver al mes actual"
-                  >
-                    <Text style={styles.todayChipText}>Hoy</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            ) : (
-              <View style={styles.periodBadge}>
-                <Text style={styles.periodBadgeText}>{formatPeriodFull(period)}</Text>
-              </View>
-            )}
-
-            {/* Modo Privado / Camouflage Mode */}
-            <PrivacyToggleButton />
-
             <Pressable
               onPress={() => setShowAddForm((prev) => !prev)}
               style={styles.addTipButton}
@@ -428,58 +392,6 @@ export function FinancialTipsSection({
         </View>
 
         <View style={styles.divider} />
-
-        {/* Panel de Score Financiero y Ahorro Potencial Identificado */}
-        <View style={[styles.executiveRow, isMobile && styles.executiveRowMobile]}>
-          <View style={styles.scoreBox}>
-            <View style={styles.scoreTopRow}>
-              <Activity size={16} color={scoreColor} />
-              <Text style={styles.scoreLabel}>SCORE DE SALUD FINANCIERA</Text>
-            </View>
-            <View style={styles.scoreValueRow}>
-              <Text style={[styles.scoreNumber, { color: scoreColor }]}>
-                {report.overallScore}
-              </Text>
-              <Text style={styles.scoreScale}>/100</Text>
-            </View>
-            <View
-              style={[
-                styles.statusBadge,
-                {
-                  borderColor: `${scoreColor}40`,
-                  backgroundColor: `${scoreColor}15`,
-                },
-              ]}
-            >
-              <View
-                style={[styles.statusDot, { backgroundColor: scoreColor }]}
-              />
-              <Text style={[styles.statusBadgeText, { color: scoreColor }]}>
-                Estado: {report.healthStatus}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.potentialSavingsBox}>
-            <View style={styles.scoreTopRow}>
-              <Coins size={16} color="#34D399" />
-              <Text style={styles.savingsLabel}>
-                AHORRO POTENCIAL IDENTIFICADO
-              </Text>
-            </View>
-            <Text style={styles.savingsAmount}>
-              {formatCLP(report.totalPotentialSavingsMonthlyCLP)}
-              <Text style={styles.savingsUnit}> / mes</Text>
-            </Text>
-            <Text style={styles.savingsAnnualHint}>
-              Equivale a{' '}
-              <Text style={styles.savingsAnnualHighlight}>
-                {formatCLP(report.totalPotentialSavingsAnnualCLP)}
-              </Text>{' '}
-              al año canalizables a tu fondo de ahorro o inversión.
-            </Text>
-          </View>
-        </View>
 
         {/* 4 Métricas Clave de Correlación */}
         <View style={[styles.ratiosGrid, isMobile && styles.ratiosGridMobile]}>
@@ -990,6 +902,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 10,
   },
+  heroFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   periodPicker: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1170,12 +1088,12 @@ const styles = StyleSheet.create({
   },
   ratioItem: {
     flex: 1,
-    minWidth: 140,
-    padding: 12,
-    borderRadius: radius.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    minWidth: 145,
+    padding: 16,
+    borderRadius: 22,
+    backgroundColor: colors.bentoCard,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
+    borderColor: colors.bentoBorder,
     gap: 4,
   },
   ratioLabel: {
@@ -1315,11 +1233,11 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   insightCard: {
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 12,
   },
   insightCardCritical: {
@@ -1424,12 +1342,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metricItemBox: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
-    backgroundColor: 'rgba(255, 255, 255, 0.035)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCardElevated,
     gap: 2,
   },
   metricItemLabel: {
@@ -1491,11 +1409,11 @@ const styles = StyleSheet.create({
   },
   tipCard: {
     width: '100%',
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 12,
   },
   tipCardApplied: {

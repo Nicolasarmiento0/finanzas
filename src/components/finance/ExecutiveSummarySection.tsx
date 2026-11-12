@@ -242,17 +242,73 @@ export function ExecutiveSummarySection({
             disabled: exportingMonth,
           },
         ]}
-        onPressOrb={() => onNavigateTab('cards')}
       />
 
       {/* =====================================================================
-          OPERATIVA DEL MES: FLUJO DE CAJA LIBRE MENSUAL ESTIMADO
+          OPERATIVA DEL MES: WIDGETS BENTO DE INGRESOS VS GASTOS + RATIO
          ===================================================================== */}
+      <View style={[styles.bentoPairRow, isMobile && styles.bentoPairColMobile]}>
+        <View style={styles.bentoLeftWidget}>
+          <View style={styles.bentoWidgetTopRow}>
+            <Text style={styles.bentoWidgetTitle}>Ingresos Fijos</Text>
+            <ArrowUpRight size={16} color="#34D399" />
+          </View>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={styles.bentoWidgetBigValue}
+          >
+            {formatCLP(monthlyIncome)}
+          </Text>
+          <View style={styles.bentoTrendBlock}>
+            <Text style={[styles.bentoTrendBadgeText, styles.bentoTrendGood]}>
+              ↑ {activeIncomes.length} fuente(s) activas
+            </Text>
+            <Text style={styles.bentoTrendSubtext}>
+              Período {formatPeriodFull(period)}
+            </Text>
+          </View>
+        </View>
+
+        <Pressable
+          onPress={() => onNavigateTab('fixed')}
+          style={({ pressed }) => [
+            styles.bentoRightWidget,
+            pressed && styles.pressed,
+          ]}
+        >
+          <View style={styles.bentoWidgetTopRow}>
+            <Text style={styles.bentoWidgetTitle}>Gastos Comprometidos</Text>
+            <ArrowDownRight size={16} color={colors.textSecondary} />
+          </View>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={styles.bentoWidgetBigValue}
+          >
+            -{formatCLP(monthlyExpense)}
+          </Text>
+          <View style={styles.bentoTrendBlock}>
+            <Text
+              style={[
+                styles.bentoTrendBadgeText,
+                expenseRatioPercent > 75 ? styles.bentoTrendWarn : styles.bentoTrendGood,
+              ]}
+            >
+              {expenseRatioPercent}% del ingreso · Ver checklist →
+            </Text>
+            <Text style={styles.bentoTrendSubtext}>
+              {paidExpensesCount} de {activeExpenses.length} pagados este mes
+            </Text>
+          </View>
+        </Pressable>
+      </View>
+
       <GlassCard>
         <View style={styles.sectionHeaderRow}>
           <View style={styles.sectionTitleWrap}>
-            <Text style={styles.sectionEyebrow}>OPERATIVA DEL MES ({period})</Text>
-            <Text style={styles.sectionTitle}>Flujo de Caja Libre Mensual Estimado</Text>
+            <Text style={styles.sectionEyebrow}>RATIO DE COMPROMISO ({period})</Text>
+            <Text style={styles.sectionTitle}>Capacidad Libre vs. Gastos Fijos</Text>
           </View>
           <Pressable
             onPress={() => onNavigateTab('fixed')}
@@ -260,56 +316,6 @@ export function ExecutiveSummarySection({
           >
             <Text style={styles.linkPillBtnText}>Ir a Checklist Fijos</Text>
           </Pressable>
-        </View>
-
-        <View style={[styles.cashFlowGrid, isMobile && styles.cashFlowGridMobile]}>
-          <View style={[styles.cashFlowBox, isMobile && styles.cashFlowBoxMobile]}>
-            <View style={styles.cashFlowIconRow}>
-              <ArrowUpRight size={15} color="#34D399" />
-              <Text style={styles.cashFlowLabel}>INGRESOS FIJOS ACTIVOS</Text>
-            </View>
-            <Text style={styles.cashFlowValue}>{formatCLP(monthlyIncome)}</Text>
-            <Text style={styles.cashFlowSub}>
-              {activeIncomes.length} fuente(s) de ingreso en {period}
-            </Text>
-          </View>
-
-          <View style={[styles.cashFlowBox, isMobile && styles.cashFlowBoxMobile]}>
-            <View style={styles.cashFlowIconRow}>
-              <ArrowDownRight size={15} color={colors.textSecondary} />
-              <Text style={styles.cashFlowLabel}>GASTOS FIJOS ACTIVOS</Text>
-            </View>
-            <Text style={styles.cashFlowValue}>-{formatCLP(monthlyExpense)}</Text>
-            <Text style={styles.cashFlowSub}>
-              {paidExpensesCount} de {activeExpenses.length} pagados este mes
-            </Text>
-          </View>
-
-          <View
-            style={[
-              styles.cashFlowBox,
-              styles.cashFlowBoxHighlight,
-              isMobile && styles.cashFlowBoxMobile,
-            ]}
-          >
-            <View style={styles.cashFlowIconRow}>
-              <Sparkles size={15} color={colors.textPrimary} />
-              <Text style={styles.cashFlowLabel}>FLUJO DE CAJA LIBRE</Text>
-            </View>
-            <Text
-              style={[
-                styles.cashFlowValueLarge,
-                monthlyFreeCash < 0 && { color: '#F87171' },
-              ]}
-            >
-              {formatCLP(monthlyFreeCash)}
-            </Text>
-            <Text style={styles.cashFlowSub}>
-              {savingsCapacityPercent > 0
-                ? `${savingsCapacityPercent}% del ingreso queda libre para ahorro/inversión`
-                : 'Sin margen libre en este período'}
-            </Text>
-          </View>
         </View>
 
         {/* Barra de Proporción Ingresos vs. Gastos */}
@@ -1100,11 +1106,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   categoryItemCard: {
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.025)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 10,
   },
   categoryItemHeader: {
@@ -1201,11 +1207,11 @@ const styles = StyleSheet.create({
   },
   exportOptionCard: {
     flex: 1,
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     gap: 12,
     justifyContent: 'space-between',
   },
@@ -1257,6 +1263,76 @@ const styles = StyleSheet.create({
   horizonChipTextActive: {
     color: colors.buttonPrimaryText,
     fontWeight: '700',
+  },
+  bentoPairRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bentoPairColMobile: {
+    flexDirection: 'column',
+  },
+  bentoLeftWidget: {
+    flex: 1,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: colors.bentoCard,
+    padding: 18,
+    justifyContent: 'space-between',
+    minHeight: 132,
+    gap: 8,
+  },
+  bentoRightWidget: {
+    flex: 1,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: colors.bentoCardElevated,
+    padding: 18,
+    justifyContent: 'space-between',
+    minHeight: 132,
+    gap: 8,
+  },
+  bentoWidgetTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  bentoWidgetTitle: {
+    color: 'rgba(226, 232, 240, 0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  bentoWidgetBigValue: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.8,
+  },
+  bentoTrendBlock: {
+    gap: 2,
+  },
+  bentoTrendBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  bentoTrendWarn: {
+    color: '#FB7185',
+  },
+  bentoTrendGood: {
+    color: '#34D399',
+  },
+  bentoTrendSubtext: {
+    color: 'rgba(148, 163, 184, 0.8)',
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  pressed: {
+    opacity: 0.82,
   },
   exportSuccessBanner: {
     marginTop: 14,

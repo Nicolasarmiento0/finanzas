@@ -8,8 +8,6 @@ import {
 import {
   Calendar,
   Check,
-  ChevronLeft,
-  ChevronRight,
   Coffee,
   Coins,
   DollarSign,
@@ -446,113 +444,68 @@ export function WalletSection({
             active: showCheckingForm,
           },
         ]}
-        onPressOrb={() => setShowExpenseForm((prev) => !prev)}
       />
 
       {/* =====================================================================
-          1. HEADER Y SELECTOR DE PERIODO
+          1. WIDGETS BENTO DE FLUJO LIBRE Y SAFE-TO-SPEND DIARIO
          ===================================================================== */}
-      <GlassCard>
-        <View style={styles.headerRow}>
-          <View style={styles.headerTextCol}>
-            <Text style={styles.sectionEyebrow}>
-              BILLETERA Y PRESUPUESTO COTIDIANO
-            </Text>
-            <Text style={styles.headerTitle}>
-              Cuentas & Gastos Variables
-            </Text>
-            <Text style={styles.headerSubtitle}>
-              Administra tu saldo disponible en cuenta y registra tus gastos del día a día (almuerzos, bebidas, salidas) sin alterar tus compromisos fijos.
-            </Text>
+      <View style={[styles.bentoPairRow, isMobile && styles.bentoPairColMobile]}>
+        <View style={styles.bentoLeftWidget}>
+          <View style={styles.bentoWidgetTopRow}>
+            <Text style={styles.bentoWidgetTitle}>Sueldo Libre Inicial</Text>
+            <Coins size={15} color={colors.textSecondary} />
           </View>
-
-          <View style={styles.periodNavigator}>
-            <Pressable
-              onPress={() => onChangePeriod(shiftPeriod(period, -1))}
-              style={({ pressed }) => [
-                styles.periodNavBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronLeft size={18} color={colors.textPrimary} />
-            </Pressable>
-
-            <View style={styles.periodBadge}>
-              <Text style={styles.periodText}>{formatPeriodFull(period)}</Text>
-            </View>
-
-            <Pressable
-              onPress={() => onChangePeriod(shiftPeriod(period, 1))}
-              style={({ pressed }) => [
-                styles.periodNavBtn,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronRight size={18} color={colors.textPrimary} />
-            </Pressable>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={styles.bentoWidgetBigValue}
+          >
+            {formatCLP(initialFreeBudget)}
+          </Text>
+          <View style={styles.bentoTrendBlock}>
+            <Text style={[styles.bentoTrendBadgeText, styles.bentoTrendGood]}>
+              {checkingAccounts.length > 0
+                ? `${checkingAccounts.length} cuenta(s) vista/corriente`
+                : 'Post compromisos fijos'}
+            </Text>
+            <Text style={styles.bentoTrendSubtext}>
+              Base disponible del mes
+            </Text>
           </View>
         </View>
 
-        <View style={styles.divider} />
-
-        {/* 3 Métricas Clave de Sueldo Libre & Gastos Variables */}
-        <View style={[styles.metricsGrid, isMobile && styles.metricsGridMobile]}>
-          <View style={[styles.metricBox, isMobile && styles.metricBoxMobile]}>
-            <View style={styles.metricIconRow}>
-              <Coins size={14} color={colors.textSecondary} />
-              <Text style={styles.metricLabel}>SUELDO LIBRE INICIAL</Text>
-            </View>
-            <Text style={styles.metricValue}>{formatCLP(initialFreeBudget)}</Text>
-            <Text style={styles.metricSub}>
-              {checkingAccounts.length > 0
-                ? 'Asociado a tus cuentas vista / corriente'
-                : 'Post pagos fijos, tarjetas y ahorro'}
-            </Text>
+        <View style={styles.bentoRightWidget}>
+          <View style={styles.bentoWidgetTopRow}>
+            <Text style={styles.bentoWidgetTitle}>Gastado en Variables</Text>
+            <TrendingDown size={15} color="#F59E0B" />
           </View>
-
-          <View style={[styles.metricBox, isMobile && styles.metricBoxMobile]}>
-            <View style={styles.metricIconRow}>
-              <TrendingDown size={14} color="#F59E0B" />
-              <Text style={styles.metricLabel}>GASTADO EN VARIABLES</Text>
-            </View>
-            <Text style={[styles.metricValue, { color: '#F59E0B' }]}>
-              {formatCLP(totalSpentInVariables)}
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            style={[styles.bentoWidgetBigValue, { color: '#F59E0B' }]}
+          >
+            {formatCLP(totalSpentInVariables)}
+          </Text>
+          <View style={styles.bentoTrendBlock}>
+            <Text
+              style={[
+                styles.bentoTrendBadgeText,
+                spentRatio > 85 ? styles.bentoTrendWarn : styles.bentoTrendGood,
+              ]}
+            >
+              {spentRatio}% consumido
             </Text>
-            <Text style={styles.metricSub}>
+            <Text style={styles.bentoTrendSubtext}>
               {periodExpenses.length}{' '}
               {periodExpenses.length === 1 ? 'gasto registrado' : 'gastos registrados'}
             </Text>
           </View>
-
-          <View
-            style={[
-              styles.metricBox,
-              styles.metricBoxHighlight,
-              isMobile && styles.metricBoxMobile,
-            ]}
-          >
-            <View style={styles.metricIconRow}>
-              <Sparkles size={14} color="#34D399" />
-              <Text style={styles.metricLabelEmerald}>DISPONIBLE RESTANTE HOY</Text>
-            </View>
-            <Text
-              style={[
-                styles.metricValueEmerald,
-                remainingFreeBudget < 0 && styles.metricValueNegative,
-              ]}
-            >
-              {formatCLP(remainingFreeBudget)}
-            </Text>
-            <Text style={styles.metricSub}>
-              {remainingFreeBudget >= 0
-                ? `Ritmo sugerido: ${formatCLP(dailyBudgetSuggested)}/día (${remainingDaysInMonth} días rest.)`
-                : 'Presupuesto mensual superado'}
-            </Text>
-          </View>
         </View>
+      </View>
 
+      <GlassCard>
         {/* Barra de Progreso de Consumo del Presupuesto Diario */}
-        <View style={styles.budgetProgressSection}>
+        <View style={[styles.budgetProgressSection, { marginTop: 0 }]}>
           <View style={styles.budgetProgressHeader}>
             <Text style={styles.budgetProgressLabel}>
               Consumo de Presupuesto Libre: {spentRatio}%
@@ -1326,11 +1279,11 @@ const styles = StyleSheet.create({
   },
   safeToSpendHeroBox: {
     marginTop: 16,
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(52, 211, 153, 0.35)',
-    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    borderColor: 'rgba(52, 211, 153, 0.32)',
+    backgroundColor: colors.bentoCard,
     gap: 12,
   },
   safeToSpendTopRow: {
@@ -1526,11 +1479,11 @@ const styles = StyleSheet.create({
   accountCard: {
     flex: 1,
     minWidth: 200,
-    padding: 14,
-    borderRadius: radius.md,
+    padding: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
     flexDirection: 'column',
     justifyContent: 'flex-start',
     minHeight: 100,
@@ -1600,11 +1553,11 @@ const styles = StyleSheet.create({
   },
   inlineFormBox: {
     marginTop: 14,
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: colors.glassBorder,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderColor: colors.bentoBorderStrong,
+    backgroundColor: colors.bentoCard,
     gap: 12,
   },
   inlineFormTitle: {
@@ -1632,10 +1585,10 @@ const styles = StyleSheet.create({
   expenseFormBox: {
     marginTop: 12,
     padding: 18,
-    borderRadius: radius.md,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.3)',
-    backgroundColor: 'rgba(52, 211, 153, 0.03)',
+    backgroundColor: colors.bentoCard,
     gap: 16,
   },
   formSectionTitle: {
@@ -1810,11 +1763,11 @@ const styles = StyleSheet.create({
   },
   inlineEditExpenseBox: {
     width: '100%',
-    padding: 16,
-    borderRadius: radius.md,
+    padding: 18,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.35)',
-    backgroundColor: 'rgba(52, 211, 153, 0.05)',
+    backgroundColor: colors.bentoCard,
     gap: 12,
     marginVertical: 4,
   },
@@ -1846,6 +1799,73 @@ const styles = StyleSheet.create({
   inlineEditBtn: {
     minWidth: 120,
     height: 44,
+  },
+  bentoPairRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  bentoPairColMobile: {
+    flexDirection: 'column',
+  },
+  bentoLeftWidget: {
+    flex: 1,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: colors.bentoCard,
+    padding: 18,
+    justifyContent: 'space-between',
+    minHeight: 130,
+    gap: 8,
+  },
+  bentoRightWidget: {
+    flex: 1,
+    borderRadius: 26,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: colors.bentoCardElevated,
+    padding: 18,
+    justifyContent: 'space-between',
+    minHeight: 130,
+    gap: 8,
+  },
+  bentoWidgetTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  bentoWidgetTitle: {
+    color: 'rgba(226, 232, 240, 0.85)',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  bentoWidgetBigValue: {
+    color: '#FFFFFF',
+    fontSize: 26,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+    letterSpacing: -0.8,
+  },
+  bentoTrendBlock: {
+    gap: 2,
+  },
+  bentoTrendBadgeText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  bentoTrendWarn: {
+    color: '#FB7185',
+  },
+  bentoTrendGood: {
+    color: '#34D399',
+  },
+  bentoTrendSubtext: {
+    color: 'rgba(148, 163, 184, 0.8)',
+    fontSize: 11,
+    lineHeight: 15,
   },
   pressed: {
     opacity: 0.7,
