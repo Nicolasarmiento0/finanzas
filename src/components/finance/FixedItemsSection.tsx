@@ -17,6 +17,10 @@ import {
   AmbientHeroCard,
   FintechAddIcon,
 } from '@/components/ui/AmbientHeroCard';
+import {
+  AccordionToggle,
+  triggerAccordionAnimation,
+} from '@/components/ui/AccordionToggle';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -94,8 +98,14 @@ export function FixedItemsSection({
   const { isDesktop } = useResponsive();
   const { isPrivacyEnabled } = usePrivacy();
 
-  // Estado para formulario de creación
+  // Estado para formulario de creación y acordeón del checklist
+  const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+
+  const toggleChecklistAccordion = () => {
+    triggerAccordionAnimation();
+    setIsChecklistExpanded((prev) => !prev);
+  };
   const [itemType, setItemType] = useState<RecurringItemType>('expense');
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     accounts[0]?.id || ''
@@ -236,6 +246,7 @@ export function FixedItemsSection({
       setEditErrorMsg(null);
       return;
     }
+    setIsChecklistExpanded(true);
     setEditingItemId(item.id);
     setEditAccountId(item.account_id);
     setEditTitle(item.title);
@@ -663,33 +674,45 @@ export function FixedItemsSection({
 
       {/* Cabecera de Acciones */}
       <View style={styles.sectionHeaderRow}>
-        <View style={styles.sectionHeaderTextCol}>
+        <Pressable
+          onPress={toggleChecklistAccordion}
+          style={styles.sectionHeaderTextCol}
+        >
           <Text style={styles.sectionTitle}>Checklist Mensual de Gastos Fijos</Text>
           <Text style={styles.sectionSubtitle}>
             Marca los compromisos pagados o toca el ícono de lápiz para editarlos
           </Text>
-        </View>
-        <Pressable
-          onPress={() => {
-            if (!selectedAccountId && accounts[0]?.id) {
-              setSelectedAccountId(accounts[0].id);
-            }
-            setShowAddForm((prev) => !prev);
-          }}
-          style={({ pressed }) => [
-            styles.addPillButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          {showAddForm ? (
-            <X size={15} color={colors.buttonPrimaryText} />
-          ) : (
-            <Plus size={15} color={colors.buttonPrimaryText} />
-          )}
-          <Text style={styles.addPillButtonText}>
-            {showAddForm ? 'Cerrar' : 'Nuevo Fijo'}
-          </Text>
         </Pressable>
+        <View style={styles.sectionHeaderActions}>
+          <Pressable
+            onPress={() => {
+              if (!selectedAccountId && accounts[0]?.id) {
+                setSelectedAccountId(accounts[0].id);
+              }
+              setShowAddForm((prev) => !prev);
+            }}
+            style={({ pressed }) => [
+              styles.addPillButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            {showAddForm ? (
+              <X size={15} color={colors.buttonPrimaryText} />
+            ) : (
+              <Plus size={15} color={colors.buttonPrimaryText} />
+            )}
+            <Text style={styles.addPillButtonText}>
+              {showAddForm ? 'Cerrar' : 'Nuevo Fijo'}
+            </Text>
+          </Pressable>
+
+          <AccordionToggle
+            expanded={isChecklistExpanded}
+            count={totalCommitmentsCount}
+            onPress={toggleChecklistAccordion}
+            accessibilityLabel="Alternar checklist mensual de gastos fijos"
+          />
+        </View>
       </View>
 
       {/* Formulario colapsable para crear Ingreso o Gasto Fijo */}
@@ -971,7 +994,34 @@ export function FixedItemsSection({
 
       {/* Lista Interactiva de Gastos Fijos y Tarjetas Vigentes en el Mes */}
       <GlassCard>
-        {standaloneExpenses.length === 0 && cardAssignedExpenses.length === 0 && activeCards.length === 0 ? (
+        {!isChecklistExpanded ? (
+          <Pressable
+            onPress={toggleChecklistAccordion}
+            style={({ pressed }) => [
+              styles.collapsedChecklistBar,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.collapsedChecklistInfo}>
+              <Text style={styles.collapsedChecklistTitle}>
+                Checklist Mensual de Gastos Fijos
+              </Text>
+              <Text style={styles.collapsedChecklistSub}>
+                {totalCommitmentsCount === 0
+                  ? `Sin compromisos registrados en ${formatPeriodFull(period)}`
+                  : `${totalPaidCount} de ${totalCommitmentsCount} compromisos pagados · ${formatCLP(
+                      pendingCommitmentsAmount
+                    )} pendientes`}
+              </Text>
+            </View>
+            <AccordionToggle
+              expanded={false}
+              label="Desplegar"
+              onPress={toggleChecklistAccordion}
+              accessibilityLabel="Desplegar checklist mensual de gastos fijos"
+            />
+          </Pressable>
+        ) : standaloneExpenses.length === 0 && cardAssignedExpenses.length === 0 && activeCards.length === 0 ? (
           <Text style={styles.emptyText}>
             No hay gastos fijos ni compromisos de tarjetas para {formatPeriodFull(period)}.
           </Text>
@@ -1650,6 +1700,31 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 180,
   },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  collapsedChecklistBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  collapsedChecklistInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  collapsedChecklistTitle: {
+    color: colors.textPrimary,
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  collapsedChecklistSub: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontVariant: ['tabular-nums'],
+  },
   sectionTitle: {
     color: colors.textPrimary,
     fontSize: 16,
@@ -1676,8 +1751,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   postPaymentCard: {
-    padding: 20,
-    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
     borderColor: 'rgba(52, 211, 153, 0.25)',
     backgroundColor: colors.bentoShell,
   },
@@ -1750,8 +1826,9 @@ const styles = StyleSheet.create({
   postPaymentMetric: {
     flex: 1,
     minWidth: 140,
-    padding: 14,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -1964,6 +2041,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 15,
     fontWeight: '600',
+    flexShrink: 1,
   },
   itemTitlePaid: {
     color: colors.textSecondary,
@@ -2093,8 +2171,8 @@ const styles = StyleSheet.create({
   },
   editPanel: {
     marginTop: 12,
-    padding: 18,
-    borderRadius: 22,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorderStrong,
     backgroundColor: colors.bentoCard,
@@ -2320,24 +2398,26 @@ const styles = StyleSheet.create({
   },
   bentoLeftWidget: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     backgroundColor: colors.bentoCard,
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     justifyContent: 'space-between',
-    minHeight: 128,
+    minHeight: 124,
     gap: 8,
   },
   bentoRightWidget: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: colors.bentoCardElevated,
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     justifyContent: 'space-between',
-    minHeight: 128,
+    minHeight: 124,
     gap: 8,
   },
   bentoWidgetTopRow: {

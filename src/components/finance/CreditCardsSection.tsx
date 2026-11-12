@@ -40,6 +40,10 @@ import {
 } from '@/components/finance/CreditCardVisual';
 import { GlassCard } from '@/components/ui/GlassCard';
 import {
+  AccordionToggle,
+  triggerAccordionAnimation,
+} from '@/components/ui/AccordionToggle';
+import {
   FintechAddIcon,
   FintechAnalyticsIcon,
 } from '@/components/ui/AmbientHeroCard';
@@ -240,6 +244,17 @@ export function CreditCardsSection({
     null
   );
   const [showAllCardsExpanded, setShowAllCardsExpanded] = useState(false);
+  const [expandedCardCharges, setExpandedCardCharges] = useState<
+    Record<string, boolean>
+  >({});
+
+  const toggleCardChargesAccordion = (cardId: string) => {
+    triggerAccordionAnimation();
+    setExpandedCardCharges((prev) => ({
+      ...prev,
+      [cardId]: !prev[cardId],
+    }));
+  };
 
   const creditCards = useMemo(
     () => accounts.filter((a) => a.type === 'credit_card'),
@@ -392,6 +407,8 @@ export function CreditCardsSection({
     if (activeCardForNewGroup === cardId) {
       setActiveCardForNewGroup(null);
     } else {
+      triggerAccordionAnimation();
+      setExpandedCardCharges((prev) => ({ ...prev, [cardId]: true }));
       setSelectedWalletCardId(cardId);
       setActiveCardForNewGroup(cardId);
       setGroupTitle('');
@@ -416,6 +433,8 @@ export function CreditCardsSection({
   const [editChargeError, setEditChargeError] = useState<string | null>(null);
 
   const openEditCharge = (item: RecurringItem) => {
+    triggerAccordionAnimation();
+    setExpandedCardCharges((prev) => ({ ...prev, [item.account_id]: true }));
     setEditingChargeId(item.id);
     setEditChargeTitle(item.title);
     setEditChargeAmount(String(item.amount));
@@ -1729,27 +1748,69 @@ export function CreditCardsSection({
 
                 <View style={styles.divider} />
 
-                {/* Desglose por Tarjeta y Servicios Anidados */}
-                <View style={styles.breakdownHeader}>
-                  <View style={styles.breakdownTitleGroup}>
-                    <Layers size={15} color={colors.textSecondary} />
-                    <Text style={styles.breakdownTitle}>
-                      SERVICIOS Y CARGOS ASOCIADOS A {card.name.toUpperCase()}
-                    </Text>
-                  </View>
+                {/* Desglose por Tarjeta y Servicios Anidados (Acordeón) */}
+                {(() => {
+                  const isChargesExpanded = Boolean(
+                    expandedCardCharges[card.id] || activeCardForNewGroup === card.id
+                  );
+                  return (
+                    <>
+                      <View style={styles.breakdownHeader}>
+                        <Pressable
+                          onPress={() => toggleCardChargesAccordion(card.id)}
+                          style={styles.breakdownTitleGroup}
+                        >
+                          <Layers size={15} color={colors.textSecondary} />
+                          <Text style={styles.breakdownTitle}>
+                            SERVICIOS Y CARGOS ASOCIADOS A {card.name.toUpperCase()}
+                          </Text>
+                        </Pressable>
 
-                  <Pressable
-                    onPress={() => toggleNewGroupForCard(card.id)}
-                    style={styles.smallGhostBtn}
-                  >
-                    <Plus size={13} color={colors.textPrimary} />
-                    <Text style={styles.smallGhostBtnText}>
-                      {activeCardForNewGroup === card.id
-                        ? 'Cerrar Formulario'
-                        : 'Agregar Cargo / Cuotas'}
-                    </Text>
-                  </Pressable>
-                </View>
+                        <View style={styles.breakdownActionsGroup}>
+                          <Pressable
+                            onPress={() => toggleNewGroupForCard(card.id)}
+                            style={styles.smallGhostBtn}
+                          >
+                            <Plus size={13} color={colors.textPrimary} />
+                            <Text style={styles.smallGhostBtnText}>
+                              {activeCardForNewGroup === card.id
+                                ? 'Cerrar Formulario'
+                                : 'Agregar Cargo / Cuotas'}
+                            </Text>
+                          </Pressable>
+
+                          <AccordionToggle
+                            expanded={isChargesExpanded}
+                            count={cardItems.length}
+                            onPress={() => toggleCardChargesAccordion(card.id)}
+                            accessibilityLabel={`Alternar servicios y cargos de ${card.name}`}
+                          />
+                        </View>
+                      </View>
+
+                      {!isChargesExpanded ? (
+                        <Pressable
+                          onPress={() => toggleCardChargesAccordion(card.id)}
+                          style={({ pressed }) => [
+                            styles.collapsedAccordionSummary,
+                            pressed && styles.pressed,
+                          ]}
+                        >
+                          <Text style={styles.collapsedAccordionText}>
+                            {cardItems.length === 0
+                              ? `Sin cargos activos en ${formatPeriodFull(period)} · Toca para abrir`
+                              : `${cardItems.length} ${
+                                  cardItems.length === 1
+                                    ? 'servicio o cargo activo'
+                                    : 'servicios y cargos activos'
+                                } · Total ${formatCLP(metrics.recurringCharges)}/mes`}
+                          </Text>
+                          <Text style={styles.collapsedAccordionHint}>Ver desglose</Text>
+                        </Pressable>
+                      ) : null}
+
+                      {isChargesExpanded ? (
+                        <>
 
                 {activeCardForNewGroup === card.id ? (
                   <View style={styles.cardExpenseFormBox}>
@@ -2272,6 +2333,11 @@ export function CreditCardsSection({
                     })}
                   </View>
                 )}
+                        </>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </GlassCard>
             );
           })}
@@ -3250,6 +3316,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 12,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   progressTrack: {
     height: 8,
@@ -3276,6 +3343,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  breakdownActionsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  collapsedAccordionSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
+  },
+  collapsedAccordionText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+  },
+  collapsedAccordionHint: {
+    color: '#38BDF8',
+    fontSize: 11.5,
+    fontWeight: '700',
   },
   breakdownTitle: {
     flex: 1,
@@ -3346,6 +3442,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 14,
     fontWeight: '600',
+    flexShrink: 1,
   },
   parentItemSubtitle: {
     color: colors.textSecondary,
@@ -3400,6 +3497,7 @@ const styles = StyleSheet.create({
   },
   subItemName: {
     flex: 1,
+    flexShrink: 1,
     color: colors.textSecondary,
     fontSize: 13,
   },

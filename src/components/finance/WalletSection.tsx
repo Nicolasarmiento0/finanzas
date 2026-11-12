@@ -30,6 +30,10 @@ import {
   FintechAddIcon,
   FintechWalletIcon,
 } from '@/components/ui/AmbientHeroCard';
+import {
+  AccordionToggle,
+  triggerAccordionAnimation,
+} from '@/components/ui/AccordionToggle';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -99,8 +103,14 @@ export function WalletSection({
   const [checkingBalance, setCheckingBalance] = useState('');
   const [submittingChecking, setSubmittingChecking] = useState(false);
 
-  // Formulario de Gasto Variable
+  // Formulario y Acordeón de Gastos Variables
+  const [isVariableListExpanded, setIsVariableListExpanded] = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+
+  const toggleVariableListAccordion = () => {
+    triggerAccordionAnimation();
+    setIsVariableListExpanded((prev) => !prev);
+  };
   const [varTitle, setVarTitle] = useState('');
   const [varAmount, setVarAmount] = useState('');
   const [varCategory, setVarCategory] = useState('alimentacion');
@@ -358,6 +368,8 @@ export function WalletSection({
   };
 
   const openEditExpense = (exp: VariableExpense) => {
+    triggerAccordionAnimation();
+    setIsVariableListExpanded(true);
     setEditingExpenseId(exp.id);
     setEditExpenseTitle(exp.title);
     setEditExpenseAmount(String(exp.amount));
@@ -740,7 +752,10 @@ export function WalletSection({
          ===================================================================== */}
       <GlassCard>
         <View style={styles.sectionHeaderRow}>
-          <View style={styles.sectionHeaderTextCol}>
+          <Pressable
+            onPress={toggleVariableListAccordion}
+            style={styles.sectionHeaderTextCol}
+          >
             <Text style={styles.sectionEyebrow}>REGISTRO DEL DÍA A DÍA</Text>
             <Text style={styles.sectionTitle}>
               Gastos Variables del Mes ({formatPeriodFull(period)})
@@ -748,17 +763,26 @@ export function WalletSection({
             <Text style={styles.sectionSubtitle}>
               Ingresa tus compras cotidianas (un almuerzo, una bebida, un café, etc.) y descuéntalas de tu sueldo libre.
             </Text>
-          </View>
-
-          <Pressable
-            onPress={() => setShowExpenseForm(!showExpenseForm)}
-            style={[styles.addPillButton, styles.addPillButtonEmerald]}
-          >
-            <Plus size={13} color="#050505" />
-            <Text style={styles.addPillButtonTextEmerald}>
-              {showExpenseForm ? 'Ocultar' : 'Registrar Gasto'}
-            </Text>
           </Pressable>
+
+          <View style={styles.sectionHeaderActions}>
+            <Pressable
+              onPress={() => setShowExpenseForm(!showExpenseForm)}
+              style={[styles.addPillButton, styles.addPillButtonEmerald]}
+            >
+              <Plus size={13} color="#050505" />
+              <Text style={styles.addPillButtonTextEmerald}>
+                {showExpenseForm ? 'Ocultar' : 'Registrar Gasto'}
+              </Text>
+            </Pressable>
+
+            <AccordionToggle
+              expanded={isVariableListExpanded}
+              count={periodExpenses.length}
+              onPress={toggleVariableListAccordion}
+              accessibilityLabel="Alternar lista de gastos variables del mes"
+            />
+          </View>
         </View>
 
         {/* Catálogo de Acciones Rápidas (Micro-Gastos Chilenos con Edición al Vuelo) */}
@@ -888,8 +912,33 @@ export function WalletSection({
           </View>
         ) : null}
 
-        {/* Lista Cronológica de Gastos Variables */}
-        {periodExpenses.length === 0 ? (
+        {/* Lista Cronológica de Gastos Variables (Acordeón) */}
+        {!isVariableListExpanded ? (
+          <Pressable
+            onPress={toggleVariableListAccordion}
+            style={({ pressed }) => [
+              styles.collapsedAccordionBar,
+              pressed && styles.pressed,
+            ]}
+          >
+            <View style={styles.collapsedAccordionInfo}>
+              <Text style={styles.collapsedAccordionTitle}>
+                Historial de Gastos Variables ({periodExpenses.length})
+              </Text>
+              <Text style={styles.collapsedAccordionSub}>
+                {periodExpenses.length === 0
+                  ? `Sin gastos variables en ${formatPeriodFull(period)} · Toca para abrir`
+                  : `Total del mes: ${formatCLP(totalSpentInVariables)} · Toca para ver o editar`}
+              </Text>
+            </View>
+            <AccordionToggle
+              expanded={false}
+              label="Desplegar"
+              onPress={toggleVariableListAccordion}
+              accessibilityLabel="Desplegar historial de gastos variables"
+            />
+          </Pressable>
+        ) : periodExpenses.length === 0 ? (
           <View style={styles.emptyExpensesBox}>
             <Text style={styles.emptyExpensesText}>
               Aún no has registrado gastos variables en {formatPeriodFull(period)}.
@@ -1373,6 +1422,7 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '800',
     letterSpacing: -0.5,
+    fontVariant: ['tabular-nums'],
   },
   safeToSpendAmountDanger: {
     color: '#EF4444',
@@ -1386,6 +1436,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 11.5,
     lineHeight: 16,
+    fontVariant: ['tabular-nums'],
   },
   safeToSpendPillsCol: {
     flexDirection: 'row',
@@ -1411,6 +1462,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 11,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -1424,6 +1476,37 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 240,
     gap: 3,
+  },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  collapsedAccordionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.bentoBorder,
+    backgroundColor: colors.bentoCard,
+  },
+  collapsedAccordionInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  collapsedAccordionTitle: {
+    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  collapsedAccordionSub: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    fontVariant: ['tabular-nums'],
   },
   sectionTitle: {
     color: colors.textPrimary,
@@ -1479,8 +1562,9 @@ const styles = StyleSheet.create({
   accountCard: {
     flex: 1,
     minWidth: 200,
-    padding: 16,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -1553,8 +1637,8 @@ const styles = StyleSheet.create({
   },
   inlineFormBox: {
     marginTop: 14,
-    padding: 18,
-    borderRadius: 22,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorderStrong,
     backgroundColor: colors.bentoCard,
@@ -1584,8 +1668,8 @@ const styles = StyleSheet.create({
   },
   expenseFormBox: {
     marginTop: 12,
-    padding: 18,
-    borderRadius: 22,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.3)',
     backgroundColor: colors.bentoCard,
@@ -1723,6 +1807,7 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: '600',
     lineHeight: 19,
+    flexShrink: 1,
   },
   expenseMetaRow: {
     flexDirection: 'row',
@@ -1763,8 +1848,8 @@ const styles = StyleSheet.create({
   },
   inlineEditExpenseBox: {
     width: '100%',
-    padding: 18,
-    borderRadius: 22,
+    padding: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.35)',
     backgroundColor: colors.bentoCard,
@@ -1809,24 +1894,26 @@ const styles = StyleSheet.create({
   },
   bentoLeftWidget: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.1)',
     backgroundColor: colors.bentoCard,
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     justifyContent: 'space-between',
-    minHeight: 130,
+    minHeight: 124,
     gap: 8,
   },
   bentoRightWidget: {
     flex: 1,
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.12)',
     backgroundColor: colors.bentoCardElevated,
-    padding: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     justifyContent: 'space-between',
-    minHeight: 130,
+    minHeight: 124,
     gap: 8,
   },
   bentoWidgetTopRow: {

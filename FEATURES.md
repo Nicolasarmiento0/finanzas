@@ -185,16 +185,18 @@
 
 ## [feat-ui-liquid-glass-design-system] - Sistema de Diseño Dark-First Liquid Glass y Componentes Atómicos
 - **Estado:** Estable
-- **Descripción:** Biblioteca de tokens visuales (`#050505` Pure Obsidian canvas, `#121212` charcoal surface, bordes translúcidos y tipografía con `tabular-nums`) y componentes atómicos reutilizables con desenfoque nativo `expo-blur` (`GlassCard`), campos de texto estilizados (`GlassInput`) y botones de alto contraste estilo Tesla (`TeslaButton`).
+- **Descripción:** Biblioteca de tokens visuales (`#050505` Pure Obsidian canvas, `#0B101B` Obsidian-Blue, superficies Bento y tipografía con `tabular-nums`) y componentes atómicos reutilizables con desenfoque nativo `expo-blur` (`GlassCard`), campos de texto estilizados (`GlassInput`), botones de alto contraste estilo Tesla (`TeslaButton`) y controles acordeón animados (`AccordionToggle`).
 - **Archivos / Rutas Clave:**
   - `src/theme/tokens.ts` (`colors`, `spacing`, `radius`, `typography`)
   - `src/components/ui/GlassCard.tsx` (`GlassCard`)
   - `src/components/ui/GlassInput.tsx` (`GlassInput`)
   - `src/components/ui/TeslaButton.tsx` (`TeslaButton`)
+  - `src/components/ui/AccordionToggle.tsx` (`AccordionToggle`, `triggerAccordionAnimation`)
 - **Puntos de Contacto / Interfaces:**
   - **Props de `GlassCard`:** `{ children, style?, intensity?: number }`.
   - **Props de `GlassInput`:** `TextInputProps & { label?: string, error?: string, containerStyle? }`.
   - **Props de `TeslaButton`:** `{ title, onPress, variant?: 'primary' | 'secondary' | 'ghost', loading?: boolean, disabled?: boolean, style? }`.
+  - **Props de `AccordionToggle`:** `{ expanded, onPress, count?, label?, accessibilityLabel? }`.
 - **Dependencias Internas:**
   - Transversal a todas las pantallas y módulos de `src/app/` y `src/components/`.
 

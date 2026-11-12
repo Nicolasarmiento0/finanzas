@@ -2640,8 +2640,8 @@ const styles = StyleSheet.create({
   },
   acceleratedBenefitCard: {
     marginTop: 12,
-    padding: 16,
-    borderRadius: 22,
+    padding: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.35)',
     backgroundColor: colors.bentoCardElevated,
@@ -2667,7 +2667,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 120,
     padding: 12,
-    borderRadius: 18,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -2903,7 +2903,7 @@ const styles = StyleSheet.create({
   pointInspectorBox: {
     marginTop: 14,
     padding: 14,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCardElevated,
@@ -2936,11 +2936,13 @@ const styles = StyleSheet.create({
   inspectorMetricItem: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
   inspectorMetricInterest: {
     color: ACCENT_GREEN,
     fontSize: 12,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   expiringHeaderRow: {
     flexDirection: 'row',
@@ -2975,6 +2977,7 @@ const styles = StyleSheet.create({
     color: ACCENT_GREEN,
     fontSize: 13,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
     marginTop: 1,
   },
   expiringTitle: {
@@ -2990,11 +2993,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   expiringMonthsContainer: {
-    gap: 14,
+    gap: 12,
   },
   expiringMonthBlock: {
-    padding: 16,
-    borderRadius: 22,
+    padding: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -3063,6 +3066,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 11,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   expiringMonthFooter: {
     flexDirection: 'row',
@@ -3084,6 +3088,7 @@ const styles = StyleSheet.create({
     color: ACCENT_GREEN,
     fontSize: 13,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   pressed: {
     opacity: 0.75,

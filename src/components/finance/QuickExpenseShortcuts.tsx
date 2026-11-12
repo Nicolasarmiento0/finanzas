@@ -642,8 +642,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingVertical: 10,
-    paddingHorizontal: 13,
-    borderRadius: 18,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
     backgroundColor: colors.bentoCard,
     minWidth: 145,
@@ -672,6 +672,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     letterSpacing: -0.2,
+    fontVariant: ['tabular-nums'],
   },
 
   // Modal Backdrop
@@ -685,26 +686,28 @@ const styles = StyleSheet.create({
   modalBox: {
     width: '100%',
     maxWidth: 480,
-    borderRadius: 28,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.bentoBorderStrong,
     backgroundColor: colors.obsidianHero,
-    padding: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     gap: 16,
   },
   modalBoxMobile: {
     maxWidth: '100%',
-    padding: 18,
+    padding: 16,
   },
   configModalBox: {
     width: '100%',
     maxWidth: 520,
     maxHeight: '85%',
-    borderRadius: 28,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.bentoBorderStrong,
     backgroundColor: colors.obsidianHero,
-    padding: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 18,
     gap: 16,
   },
   modalHeader: {
@@ -742,8 +745,9 @@ const styles = StyleSheet.create({
 
   // Amount Display & Input
   amountDisplayBox: {
-    padding: 16,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.35)',
     backgroundColor: colors.bentoCard,
@@ -771,6 +775,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 32,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
     textAlign: 'center',
     minWidth: 140,
     padding: 0,
@@ -778,6 +783,7 @@ const styles = StyleSheet.create({
   amountFormattedHint: {
     color: colors.textSecondary,
     fontSize: 12,
+    fontVariant: ['tabular-nums'],
     fontWeight: '600',
   },
 

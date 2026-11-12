@@ -100,7 +100,7 @@ export default function TipsScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer centered={false} maxWidth={920}>
+      <ScreenContainer centered={false} maxWidth={740}>
         <View style={styles.loader}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -109,7 +109,7 @@ export default function TipsScreen() {
   }
 
   return (
-    <ScreenContainer centered={false} maxWidth={920}>
+    <ScreenContainer centered={false} maxWidth={740}>
       <View style={styles.pageStack}>
         <FinancialTipsSection
           period={period}
@@ -134,7 +134,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     flexGrow: 1,
-    gap: 20,
-    paddingBottom: 32,
+    gap: 14,
+    paddingBottom: 40,
   },
 });

@@ -28,7 +28,7 @@ const styles = StyleSheet.create({
   outer: {
     width: '100%',
     alignSelf: 'stretch',
-    borderRadius: 28,
+    borderRadius: 16,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: colors.bentoBorder,
@@ -40,10 +40,12 @@ const styles = StyleSheet.create({
   },
   inner: {
     width: '100%',
-    padding: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   innerMobile: {
     width: '100%',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
 });

@@ -540,8 +540,8 @@ const styles = StyleSheet.create({
     maxHeight: 460,
   },
   resultScrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+    paddingHorizontal: 16,
+    paddingBottom: 48,
   },
   resultCard: {
     marginTop: 6,
@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   metricCard: {
     flex: 1,
     backgroundColor: colors.bentoCard,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     padding: 12,
@@ -594,10 +594,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     letterSpacing: -0.3,
+    fontVariant: ['tabular-nums'],
   },
   breakdownBox: {
     backgroundColor: colors.bentoCardElevated,
-    borderRadius: 20,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     padding: 14,

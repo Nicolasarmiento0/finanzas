@@ -22,7 +22,7 @@ interface ScreenContainerProps {
 export function ScreenContainer({
   children,
   centered = true,
-  maxWidth = 920,
+  maxWidth = 740,
   contentStyle,
   scrollRef,
 }: ScreenContainerProps) {
@@ -48,7 +48,7 @@ export function ScreenContainer({
               styles.scrollContentMobile,
               {
                 paddingTop: Math.max(insets.top, 16),
-                paddingBottom: 110 + insets.bottom,
+                paddingBottom: 148 + insets.bottom,
               },
             ],
             centered && styles.centeredContent,
@@ -113,14 +113,15 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingVertical: 32,
+    paddingTop: 28,
+    paddingBottom: 64,
   },
   scrollContentMobile: {
     width: '100%',
     alignItems: 'stretch',
     paddingHorizontal: 14,
     paddingTop: 14,
-    paddingBottom: 120,
+    paddingBottom: 148,
   },
   centeredContent: {
     justifyContent: 'center',

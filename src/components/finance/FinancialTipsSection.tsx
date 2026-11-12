@@ -1076,6 +1076,7 @@ const styles = StyleSheet.create({
   savingsAnnualHighlight: {
     color: colors.textPrimary,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   ratiosGrid: {
     marginTop: 14,
@@ -1089,8 +1090,9 @@ const styles = StyleSheet.create({
   ratioItem: {
     flex: 1,
     minWidth: 145,
-    padding: 16,
-    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
     backgroundColor: colors.bentoCard,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
@@ -1233,8 +1235,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   insightCard: {
-    padding: 18,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -1302,6 +1305,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     lineHeight: 22,
+    flexShrink: 1,
   },
   insightSummary: {
     color: colors.textPrimary,
@@ -1344,7 +1348,7 @@ const styles = StyleSheet.create({
   metricItemBox: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCardElevated,
@@ -1409,8 +1413,9 @@ const styles = StyleSheet.create({
   },
   tipCard: {
     width: '100%',
-    padding: 18,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
@@ -1452,6 +1457,7 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     fontWeight: '700',
     lineHeight: 20,
+    flexShrink: 1,
   },
   tipMetaRow: {
     flexDirection: 'row',

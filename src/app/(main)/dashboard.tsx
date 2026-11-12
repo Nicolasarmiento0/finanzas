@@ -572,7 +572,7 @@ export default function DashboardScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer centered={false} maxWidth={920}>
+      <ScreenContainer centered={false} maxWidth={740}>
         <View style={styles.loaderContainer}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -581,7 +581,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScreenContainer scrollRef={mainScrollRef} centered={false} maxWidth={920}>
+    <ScreenContainer scrollRef={mainScrollRef} centered={false} maxWidth={740}>
       <View style={styles.pageStack}>
         {/* Tarjeta Superior Ambiental de Cabecera y Resumen Ejecutivo */}
         <AmbientHeroCard
@@ -1092,8 +1092,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     flexGrow: 1,
-    gap: 20,
-    paddingBottom: 32,
+    gap: 14,
+    paddingBottom: 40,
   },
   headerRow: {
     flexDirection: 'row',
@@ -1514,6 +1514,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 9.5,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   intelligenceSavingsPill: {
     paddingHorizontal: 7,
@@ -1527,17 +1528,20 @@ const styles = StyleSheet.create({
     color: '#34D399',
     fontSize: 9.5,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   intelligenceTitle: {
     color: colors.textPrimary,
     fontSize: 13.5,
     fontWeight: '700',
     lineHeight: 18,
+    flexShrink: 1,
   },
   intelligenceDesc: {
     color: colors.textSecondary,
     fontSize: 11.5,
     lineHeight: 16,
+    flexShrink: 1,
   },
   intelligenceActionBtn: {
     flexDirection: 'row',

@@ -180,7 +180,7 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <ScreenContainer centered={false} maxWidth={920}>
+      <ScreenContainer centered={false} maxWidth={740}>
         <View style={styles.loader}>
           <ActivityIndicator color={colors.textPrimary} size="large" />
         </View>
@@ -196,7 +196,7 @@ export default function ProfileScreen() {
     .join('');
 
   return (
-    <ScreenContainer centered={false} maxWidth={920}>
+    <ScreenContainer centered={false} maxWidth={740}>
       <View style={styles.pageStack}>
         {/* Hero Ambiental del Perfil */}
         <AmbientHeroCard
@@ -458,8 +458,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
     flexGrow: 1,
-    gap: 20,
-    paddingBottom: 32,
+    gap: 14,
+    paddingBottom: 40,
   },
   capsuleInitials: {
     color: '#FFFFFF',
@@ -593,8 +593,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     flexWrap: 'wrap',
     gap: 12,
-    padding: 16,
-    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(52, 211, 153, 0.3)',
     backgroundColor: colors.bentoCard,

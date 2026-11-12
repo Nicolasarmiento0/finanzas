@@ -43,6 +43,10 @@ import {
   FintechCheckIcon,
   FintechGoalsIcon,
 } from '@/components/ui/AmbientHeroCard';
+import {
+  AccordionToggle,
+  triggerAccordionAnimation,
+} from '@/components/ui/AccordionToggle';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { usePrivacy } from '@/context/PrivacyContext';
@@ -358,6 +362,7 @@ export function FuturePurchasesSection({
   const [priority, setPriority] = useState<FuturePurchasePriority>('medium');
   const [targetAccountId, setTargetAccountId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [convertingId, setConvertingId] = useState<string | null>(null);
 
@@ -365,6 +370,22 @@ export function FuturePurchasesSection({
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [statusView, setStatusView] = useState<'active' | 'purchased'>('active');
   const [selectedCartIds, setSelectedCartIds] = useState<Set<string>>(new Set());
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(
+    () => new Set()
+  );
+
+  const toggleProductAccordion = (id: string) => {
+    triggerAccordionAnimation();
+    setExpandedProductIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Simuladores en línea por tarjeta (override temporal sin guardar o con guardado rápido)
   const [cardSimOverrides, setCardSimOverrides] = useState<
@@ -474,6 +495,7 @@ export function FuturePurchasesSection({
     setPriority('medium');
     setTargetAccountId(null);
     setNotes('');
+    setFormError('');
   };
 
   const handleApplyQuickTemplate = (tpl: CategoryCatalogItem) => {
@@ -512,8 +534,12 @@ export function FuturePurchasesSection({
     const numericAmount = Math.round(
       Number(amountStr.replace(/[^0-9]/g, '')) || 0
     );
-    if (!cleanTitle || numericAmount <= 0) return;
+    if (!cleanTitle || numericAmount <= 0) {
+      setFormError('Ingresa un nombre válido y un monto mayor a $0.');
+      return;
+    }
 
+    setFormError('');
     setSubmitting(true);
     try {
       const effectiveMode: FuturePurchasePaymentMode =
@@ -537,6 +563,12 @@ export function FuturePurchasesSection({
       }
       resetForm();
       setShowForm(false);
+    } catch (err) {
+      setFormError(
+        err instanceof Error
+          ? err.message
+          : 'No se pudo guardar en el servidor. Inténtalo nuevamente.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1148,6 +1180,10 @@ export function FuturePurchasesSection({
               onChangeText={setNotes}
             />
 
+            {formError ? (
+              <Text style={styles.formErrorText}>{formError}</Text>
+            ) : null}
+
             <View style={styles.formFooterRow}>
               <TeslaButton
                 title="Cancelar"
@@ -1171,7 +1207,8 @@ export function FuturePurchasesSection({
       {/* BARRA ACTIVA DEL MODO CARRITO (Cuando hay >= 1 ítems seleccionados) */}
       {selectedCartItems.length > 0 ? (
         <GlassCard style={styles.cartBannerCard}>
-          <View style={styles.cartBannerTopRow}>
+          <View style={styles.cartBannerContent}>
+            <View style={styles.cartBannerTopRow}>
             <View style={styles.cartBannerTitleCol}>
               <View style={styles.cartBadgeRow}>
                 <ShoppingCart size={15} color="#F59E0B" />
@@ -1245,6 +1282,7 @@ export function FuturePurchasesSection({
                 {cartSimulation.projectedHealthScore}/100
               </Text>
             </View>
+          </View>
           </View>
         </GlassCard>
       ) : null}
@@ -1339,6 +1377,7 @@ export function FuturePurchasesSection({
       {/* ESTADO VACÍO CON CARGADOR 1-CLIC DE EJEMPLOS */}
       {filteredItems.length === 0 ? (
         <GlassCard style={styles.emptyCard}>
+          <View style={styles.emptyCardContent}>
           <Sparkles size={26} color="#34D399" />
           <Text style={styles.emptyTitle}>
             {statusView === 'active'
@@ -1364,6 +1403,7 @@ export function FuturePurchasesSection({
               />
             </View>
           ) : null}
+          </View>
         </GlassCard>
       ) : null}
 
@@ -1390,6 +1430,7 @@ export function FuturePurchasesSection({
           const vTheme = getVerdictTheme(evaluation.verdict);
           const isSelectedInCart = selectedCartIds.has(item.id);
           const isPurchased = item.status === 'purchased';
+          const isExpanded = expandedProductIds.has(item.id);
 
           return (
             <GlassCard
@@ -1399,7 +1440,8 @@ export function FuturePurchasesSection({
                 isSelectedInCart && styles.purchaseCardSelected,
               ]}
             >
-              {/* Fila Superior: Checkbox Carrito + Categoría + Prioridad + Semáforo */}
+              <View style={styles.purchaseCardContent}>
+              {/* Fila Superior: Checkbox Carrito + Categoría + Prioridad + Semáforo + Acordeón */}
               <View style={styles.cardTopRow}>
                 <View style={styles.cardTopLeft}>
                   {!isPurchased ? (
@@ -1449,28 +1491,55 @@ export function FuturePurchasesSection({
                   </View>
                 </View>
 
-                {/* Semáforo de Viabilidad */}
-                <View
-                  style={[
-                    styles.verdictPill,
-                    {
-                      backgroundColor: vTheme.bg,
-                      borderColor: vTheme.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.verdictPillText, { color: vTheme.color }]}>
-                    {vTheme.dot} {evaluation.verdictBadge}
-                  </Text>
+                <View style={styles.cardTopRight}>
+                  {/* Semáforo de Viabilidad */}
+                  <View
+                    style={[
+                      styles.verdictPill,
+                      {
+                        backgroundColor: vTheme.bg,
+                        borderColor: vTheme.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.verdictPillText, { color: vTheme.color }]}>
+                      {vTheme.dot} {evaluation.verdictBadge}
+                    </Text>
+                  </View>
+
+                  <AccordionToggle
+                    expanded={isExpanded}
+                    onPress={() => toggleProductAccordion(item.id)}
+                    accessibilityLabel={`Desplegar detalles de ${item.title}`}
+                  />
                 </View>
               </View>
 
-              {/* Título y Precio Principal */}
-              <View style={styles.cardMainRow}>
+              {/* Título y Precio Principal (tocar también despliega el acordeón) */}
+              <Pressable
+                onPress={() => toggleProductAccordion(item.id)}
+                style={({ pressed }) => [
+                  styles.cardMainRow,
+                  pressed && styles.pressed,
+                ]}
+              >
                 <View style={styles.cardTitleCol}>
                   <Text style={styles.itemTitle}>{item.title}</Text>
                   {item.notes ? (
-                    <Text style={styles.itemNotes}>{item.notes}</Text>
+                    <Text
+                      style={styles.itemNotes}
+                      numberOfLines={isExpanded ? undefined : 1}
+                    >
+                      {item.notes}
+                    </Text>
+                  ) : null}
+                  {editingId === item.id && showForm && !isExpanded ? (
+                    <View style={styles.editingInlineHint}>
+                      <ArrowUp size={11} color="#34D399" />
+                      <Text style={styles.editingIndicatorText}>
+                        Editando arriba
+                      </Text>
+                    </View>
                   ) : null}
                 </View>
 
@@ -1496,7 +1565,10 @@ export function FuturePurchasesSection({
                     <Text style={styles.itemPriceSub}>Pago único al contado</Text>
                   )}
                 </View>
-              </View>
+              </Pressable>
+
+              {isExpanded ? (
+                <View style={styles.purchaseCardExpandedBody}>
 
               {/* Dictamen Explicativo del Motor */}
               <View
@@ -1604,7 +1676,18 @@ export function FuturePurchasesSection({
               ) : null}
 
               {/* Comparador Inteligente de 3 Caminos: Contado vs Cuotas vs Ahorro Previo */}
-              {!evaluation.antiImpulse.isSubscription ? (
+              {!evaluation.antiImpulse.isSubscription ? (() => {
+                const isCashRecommended =
+                  evaluation.cashPath.isViableToday &&
+                  (effectiveMode === 'one_time_cash' ||
+                    !evaluation.installmentsPath.isViableInInstallments);
+                const isInstallmentsRecommended =
+                  !isCashRecommended &&
+                  evaluation.installmentsPath.isViableInInstallments;
+                const isSavingsRecommended =
+                  !isCashRecommended && !isInstallmentsRecommended;
+
+                return (
                 <View
                   style={[
                     styles.pathsComparatorGrid,
@@ -1612,7 +1695,14 @@ export function FuturePurchasesSection({
                   ]}
                 >
                   {/* Camino A: Al Contado Hoy */}
-                  <View style={styles.pathBox}>
+                  <View
+                    style={[
+                      styles.pathBox,
+                      isCashRecommended
+                        ? styles.pathBoxRecommendedEmerald
+                        : styles.pathBoxSecondary,
+                    ]}
+                  >
                     <View style={styles.pathHeader}>
                       <Wallet size={13} color="#34D399" />
                       <Text style={styles.pathTitle}>CAMINO A · CONTADO HOY</Text>
@@ -1628,7 +1718,14 @@ export function FuturePurchasesSection({
                   </View>
 
                   {/* Camino B: Tarjeta en N Cuotas */}
-                  <View style={styles.pathBox}>
+                  <View
+                    style={[
+                      styles.pathBox,
+                      isInstallmentsRecommended
+                        ? styles.pathBoxRecommendedBlue
+                        : styles.pathBoxSecondary,
+                    ]}
+                  >
                     <View style={styles.pathHeader}>
                       <CreditCard size={13} color="#38BDF8" />
                       <Text style={styles.pathTitle}>
@@ -1647,7 +1744,14 @@ export function FuturePurchasesSection({
                   </View>
 
                   {/* Camino C: Meta de Ahorro Previo */}
-                  <View style={styles.pathBox}>
+                  <View
+                    style={[
+                      styles.pathBox,
+                      isSavingsRecommended
+                        ? styles.pathBoxRecommendedPurple
+                        : styles.pathBoxSecondary,
+                    ]}
+                  >
                     <View style={styles.pathHeader}>
                       <PiggyBank size={13} color="#A855F7" />
                       <Text style={styles.pathTitle}>
@@ -1667,7 +1771,8 @@ export function FuturePurchasesSection({
                     </Text>
                   </View>
                 </View>
-              ) : null}
+                );
+              })() : null}
 
               {/* Indicadores Anti-Impulso: Horas de Trabajo y Costo de Oportunidad */}
               <View style={styles.antiImpulseBar}>
@@ -1786,6 +1891,9 @@ export function FuturePurchasesSection({
                   </Pressable>
                 </View>
               </View>
+                </View>
+              ) : null}
+              </View>
             </GlassCard>
           );
         })}
@@ -1809,18 +1917,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   bentoKpiCard: {
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   bentoKpiCardElevated: {
-    borderRadius: 26,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.bentoBorderStrong,
     backgroundColor: colors.bentoCardElevated,
-    padding: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
   kpiHeaderRow: {
     flexDirection: 'row',
@@ -2017,6 +2127,9 @@ const styles = StyleSheet.create({
   cartBannerCard: {
     borderColor: 'rgba(245, 158, 11, 0.45)',
     backgroundColor: 'rgba(245, 158, 11, 0.05)',
+  },
+  cartBannerContent: {
+    width: '100%',
     gap: 12,
   },
   cartBannerTopRow: {
@@ -2143,8 +2256,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   emptyCard: {
+    paddingVertical: 14,
+  },
+  emptyCardContent: {
+    width: '100%',
     alignItems: 'center',
-    paddingVertical: 32,
+    paddingVertical: 18,
     gap: 10,
   },
   emptyTitle: {
@@ -2168,9 +2285,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   cardsStack: {
-    gap: 14,
+    gap: 12,
   },
   purchaseCard: {
+  },
+  purchaseCardContent: {
+    width: '100%',
+    gap: 12,
+  },
+  purchaseCardExpandedBody: {
+    width: '100%',
     gap: 12,
   },
   purchaseCardSelected: {
@@ -2188,6 +2312,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 8,
+    flexShrink: 1,
+  },
+  cardTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  editingInlineHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
   },
   cartCheckBtn: {
     padding: 2,
@@ -2243,6 +2379,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 18,
     fontWeight: '700',
+    flexShrink: 1,
   },
   itemNotes: {
     color: colors.textSecondary,
@@ -2355,12 +2492,33 @@ const styles = StyleSheet.create({
   },
   pathBox: {
     flex: 1,
-    padding: 14,
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.bentoBorder,
     backgroundColor: colors.bentoCard,
     gap: 4,
+  },
+  pathBoxRecommendedEmerald: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(52, 211, 153, 0.72)',
+    backgroundColor: 'rgba(52, 211, 153, 0.07)',
+  },
+  pathBoxRecommendedBlue: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.72)',
+    backgroundColor: 'rgba(56, 189, 248, 0.07)',
+  },
+  pathBoxRecommendedPurple: {
+    borderWidth: 1.5,
+    borderColor: 'rgba(168, 85, 247, 0.72)',
+    backgroundColor: 'rgba(168, 85, 247, 0.07)',
+  },
+  pathBoxSecondary: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    opacity: 0.88,
   },
   pathHeader: {
     flexDirection: 'row',
@@ -2372,6 +2530,7 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '800',
     letterSpacing: 0.8,
+    flexShrink: 1,
   },
   pathMainMetric: {
     color: colors.textPrimary,
@@ -2383,6 +2542,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 11,
     lineHeight: 15,
+    flexShrink: 1,
   },
   antiImpulseBar: {
     flexDirection: 'row',
@@ -2404,14 +2564,17 @@ const styles = StyleSheet.create({
   antiImpulseText: {
     color: colors.textSecondary,
     fontSize: 11,
+    flexShrink: 1,
   },
   antiImpulseStrong: {
     color: colors.textPrimary,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   antiImpulseStrongEmerald: {
     color: '#34D399',
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   cardFooterRow: {
     flexDirection: 'row',
@@ -2480,8 +2643,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   animatedFormCardWrapper: {
-    borderRadius: 30,
+    borderRadius: 16,
     borderWidth: 1.5,
+  },
+  formErrorText: {
+    color: '#F87171',
+    fontSize: 12.5,
+    fontWeight: '600',
   },
   pressed: {
     opacity: 0.82,

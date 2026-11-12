@@ -1614,7 +1614,16 @@ app.post('/future-purchases', async (c) => {
     paymentMode === 'installments'
       ? Math.max(1, Math.min(60, Math.round(Number(body.installments_count) || 3)))
       : 1;
-  const targetAccountId = body.target_account_id?.trim() || null;
+  const rawTargetAccountId = body.target_account_id?.trim() || null;
+  let targetAccountId: string | null = null;
+  if (rawTargetAccountId) {
+    const validAccount = await c.env.DB.prepare(
+      `SELECT id FROM accounts WHERE id = ? AND user_id = ?`
+    )
+      .bind(rawTargetAccountId, user.id)
+      .first<{ id: string }>();
+    targetAccountId = validAccount ? validAccount.id : null;
+  }
   const priority =
     body.priority && VALID_PRIORITIES.includes(body.priority)
       ? body.priority
@@ -1722,12 +1731,20 @@ app.put('/future-purchases/:id', async (c) => {
           )
         )
       : 1;
-  const targetAccountId =
-    body.target_account_id !== undefined
-      ? body.target_account_id
-        ? body.target_account_id.trim()
-        : null
-      : existing.target_account_id;
+  let targetAccountId: string | null = existing.target_account_id;
+  if (body.target_account_id !== undefined) {
+    const rawTarget = body.target_account_id ? body.target_account_id.trim() : null;
+    if (rawTarget) {
+      const validAccount = await c.env.DB.prepare(
+        `SELECT id FROM accounts WHERE id = ? AND user_id = ?`
+      )
+        .bind(rawTarget, user.id)
+        .first<{ id: string }>();
+      targetAccountId = validAccount ? validAccount.id : null;
+    } else {
+      targetAccountId = null;
+    }
+  }
   const priority =
     body.priority !== undefined && VALID_PRIORITIES.includes(body.priority)
       ? body.priority
