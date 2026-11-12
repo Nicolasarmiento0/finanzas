@@ -32,6 +32,13 @@ import { FuturePurchasesSection } from '@/components/finance/FuturePurchasesSect
 import { SavingsForecastSection } from '@/components/finance/SavingsForecastSection';
 import { WalletSection } from '@/components/finance/WalletSection';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAnalyticsIcon,
+  FintechExportIcon,
+  FintechGoalsIcon,
+  FintechProfileIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { FinanzAITriggerButton } from '@/components/ui/FinanzAITriggerButton';
 import { PrivacyToggleButton } from '@/components/ui/PrivacyToggleButton';
 import { TeslaButton } from '@/components/ui/TeslaButton';
@@ -94,7 +101,7 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const { isPrivacyEnabled } = usePrivacy();
-  const { syncFinancialData } = useFinanzAI();
+  const { syncFinancialData, openFinanzAI } = useFinanzAI();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -570,152 +577,98 @@ export default function DashboardScreen() {
   return (
     <ScreenContainer scrollRef={mainScrollRef} centered={false} maxWidth={920}>
       <View style={styles.pageStack}>
-        {/* Tarjeta Superior de Cabecera y Resumen Ejecutivo */}
-        <GlassCard>
-          <View style={styles.headerRow}>
-            <View style={styles.headerIdentityCol}>
-              <Text style={styles.brand}>FinanzApp · Consola Financiera</Text>
-              <Text style={styles.welcome}>
-                Hola{user?.name ? `, ${user.name}` : ''}
-              </Text>
-              {user?.email ? (
-                <Text style={styles.email}>{user.email}</Text>
-              ) : null}
-            </View>
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={[
-                styles.headerControlsScrollView,
-                !isDesktop && styles.headerControlsScrollViewMobile,
-              ]}
-              contentContainerStyle={styles.headerControlsScroll}
-            >
-              {/* Selector de Periodo Mes a Mes */}
-              <View style={styles.periodPicker}>
-                <Pressable
-                  onPress={() => setPeriod(shiftPeriod(period, -1))}
-                  style={styles.periodIconBtn}
-                >
-                  <ChevronLeft size={16} color={colors.textPrimary} />
-                </Pressable>
-                <Text style={styles.periodText}>{formatPeriodFull(period)}</Text>
-                <Pressable
-                  onPress={() => setPeriod(shiftPeriod(period, 1))}
-                  style={styles.periodIconBtn}
-                >
-                  <ChevronRight size={16} color={colors.textPrimary} />
-                </Pressable>
+        {/* Tarjeta Superior Ambiental de Cabecera y Resumen Ejecutivo */}
+        <AmbientHeroCard
+          capsuleLabel={`Hola${user?.name ? `, ${user.name}` : ''} · ${formatPeriodFull(period)}`}
+          capsuleIcon={<LayoutGrid size={12} color="#FFFFFF" />}
+          onPressCapsule={() => setPeriod(getCurrentPeriod())}
+          onPrevPeriod={() => setPeriod(shiftPeriod(period, -1))}
+          onNextPeriod={() => setPeriod(shiftPeriod(period, 1))}
+          flameCount={intelligenceReport.insights.length}
+          flameAlert={intelligenceReport.overallScore < 65}
+          onPressFlame={() =>
+            router.push({ pathname: '/(main)/tips', params: { period } })
+          }
+          ringPercent={intelligenceReport.overallScore}
+          ringAlert={intelligenceReport.overallScore < 50}
+          eyebrowLabel={
+            isCurrentPeriod
+              ? 'Patrimonio neto consolidado'
+              : `Patrimonio neto proyectado (${formatPeriodFull(period)})`
+          }
+          badgeText={
+            !isCurrentPeriod
+              ? `${projected.diffFromCurrentNetWorth >= 0 ? '+' : ''}${formatCLP(projected.diffFromCurrentNetWorth)} vs hoy`
+              : `Margen s/ahorro ${formatCLP(netWorthWithoutSavings)}`
+          }
+          badgeArrow={
+            !isCurrentPeriod
+              ? projected.diffFromCurrentNetWorth >= 0
+                ? '↑'
+                : '↓'
+              : netWorthWithoutSavings >= 0
+                ? '↑'
+                : '↓'
+          }
+          badgeNegative={
+            !isCurrentPeriod
+              ? projected.diffFromCurrentNetWorth < 0
+              : netWorthWithoutSavings < 0
+          }
+          heroValue={formatCLP(netWorthWithSavings)}
+          subtitle={`Ingresos ${formatCLP(monthlyIncome)} · Ahorro ${formatCLP(savingsTotal)} · Deudas ${formatCLP(totalDebt)} · Libre ${formatCLP(monthlyFreeCash)}`}
+          actions={[
+            {
+              id: 'goals',
+              label: 'Metas',
+              icon: <FintechGoalsIcon active={activeTab === 'future_purchases'} />,
+              onPress: () => setActiveTab('future_purchases'),
+              active: activeTab === 'future_purchases',
+            },
+            {
+              id: 'tips',
+              label: 'Análisis',
+              icon: <FintechAnalyticsIcon />,
+              onPress: () =>
+                router.push({ pathname: '/(main)/tips', params: { period } }),
+            },
+            {
+              id: 'export-csv',
+              label: exportingQuick ? 'CSV...' : 'Reporte',
+              icon: <FintechExportIcon />,
+              onPress: handleQuickExportCsv,
+              disabled: exportingQuick,
+            },
+            {
+              id: 'profile',
+              label: 'Perfil',
+              icon: <FintechProfileIcon />,
+              onPress: () => router.push('/(main)/profile'),
+            },
+          ]}
+          onPressOrb={() => openFinanzAI()}
+          footerContent={
+            <View style={{ gap: 12 }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.headerControlsScroll}
+              >
                 {period !== getCurrentPeriod() ? (
                   <Pressable
                     onPress={() => setPeriod(getCurrentPeriod())}
                     style={styles.todayChip}
                   >
-                    <Text style={styles.todayChipText}>Hoy</Text>
+                    <Text style={styles.todayChipText}>Volver a Hoy</Text>
                   </Pressable>
                 ) : null}
-              </View>
 
-              {/* Modo Privado / Ocultar Montos en Transporte Público */}
-              <PrivacyToggleButton />
+                {/* Modo Privado / Ocultar Montos en Transporte Público */}
+                <PrivacyToggleButton />
 
-              {/* Asistente FinanzAI */}
-              <FinanzAITriggerButton variant="inline" label="FinanzAI" />
-
-              {/* Exportar CSV / Excel */}
-              <Pressable
-                onPress={handleQuickExportCsv}
-                disabled={exportingQuick}
-                style={styles.quickHeaderBtn}
-              >
-                <Download size={13} color="#34D399" />
-                <Text style={styles.quickHeaderBtnTextEmerald}>
-                  {exportingQuick ? 'Exportando...' : 'CSV / Excel'}
-                </Text>
-              </Pressable>
-
-              {/* Consejos Inteligentes */}
-              <Pressable
-                onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
-                style={styles.quickHeaderBtn}
-              >
-                <Lightbulb size={13} color={colors.textPrimary} />
-                <Text style={styles.quickHeaderBtnText}>Consejos</Text>
-              </Pressable>
-
-              {/* Perfil */}
-              <Pressable
-                onPress={() => router.push('/(main)/profile')}
-                style={styles.quickHeaderBtn}
-              >
-                <UserIcon size={13} color={colors.textPrimary} />
-                <Text style={styles.quickHeaderBtnText}>Perfil</Text>
-              </Pressable>
-            </ScrollView>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.topSummaryRow}>
-            <View style={styles.balanceSection}>
-              <View style={styles.balanceHeaderRow}>
-                <Text style={styles.balanceLabel}>
-                  {isCurrentPeriod
-                    ? 'PATRIMONIO NETO CONSOLIDADO (CON AHORROS)'
-                    : `PATRIMONIO NETO PROYECTADO (${formatPeriodFull(period).toUpperCase()})`}
-                </Text>
-                {!isCurrentPeriod ? (
-                  <View
-                    style={[
-                      styles.diffPill,
-                      projected.diffFromCurrentNetWorth >= 0
-                        ? styles.diffPillPositive
-                        : styles.diffPillNegative,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.diffPillText,
-                        projected.diffFromCurrentNetWorth >= 0
-                          ? styles.diffPillTextPositive
-                          : styles.diffPillTextNegative,
-                      ]}
-                    >
-                      {projected.diffFromCurrentNetWorth >= 0 ? '+' : ''}
-                      {formatCLP(projected.diffFromCurrentNetWorth)} vs hoy
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              <Text
-                style={[
-                  styles.balanceAmount,
-                  !isDesktop && styles.balanceAmountMobile,
-                ]}
-              >
-                {formatCLP(netWorthWithSavings)}
-              </Text>
-              <Text style={styles.balanceSubHint}>
-                Ingresos ({formatCLP(monthlyIncome)}) + Ahorro ({formatCLP(savingsTotal)}) − Deudas Totales ({formatCLP(totalDebt)})
-              </Text>
-
-              {/* Desglose: Total Sin Ahorros (Margen Operativo Mensual) */}
-              <View style={styles.withoutSavingsRow}>
-                <Text style={styles.withoutSavingsLabel}>
-                  TOTAL SIN AHORROS (MARGEN OPERATIVO):
-                </Text>
-                <Text
-                  style={[
-                    styles.withoutSavingsValue,
-                    netWorthWithoutSavings >= 0
-                      ? styles.withoutSavingsPos
-                      : styles.withoutSavingsNeg,
-                  ]}
-                >
-                  {formatCLP(netWorthWithoutSavings)}
-                </Text>
-              </View>
+                {/* Asistente FinanzAI */}
+                <FinanzAITriggerButton variant="inline" label="FinanzAI" />
+              </ScrollView>
 
               {/* Composición Consolidada de Deudas del Periodo */}
               {totalDebt > 0 ? (
@@ -762,107 +715,98 @@ export default function DashboardScreen() {
                   </View>
                 </View>
               ) : null}
-            </View>
 
-            <View style={styles.freeCashMiniCard}>
-              <Text style={styles.freeCashMiniLabel}>
-                FLUJO DE CAJA LIBRE ({period})
-              </Text>
-              <Text style={styles.freeCashMiniValue}>
-                {formatCLP(monthlyFreeCash)}
-              </Text>
-              <Text style={styles.freeCashMiniSub}>
-                Ingresos {formatCLP(monthlyIncome)} − Gastos {formatCLP(monthlyExpense)}
-              </Text>
-            </View>
-
-            {accounts.length === 0 ? (
-              <View style={styles.seedBanner}>
-                <View style={styles.seedBannerTextCol}>
-                  <View style={styles.seedTitleRow}>
-                    <Sparkles size={15} color={colors.textPrimary} />
-                    <Text style={styles.seedTitle}>
-                      ¿Reemplazar tu Excel con 1 clic?
-                    </Text>
-                  </View>
-                  <Text style={styles.seedDesc}>
-                    Carga tu estructura base (Santander, CMR Falabella, Apple + YouTube + SmartFit, Crédito Vehicular Dic 2026 y Cuentas de Ahorro 4% y 0%).
-                  </Text>
-                </View>
-                <TeslaButton
-                  title="Cargar Plantilla Excel"
-                  onPress={handleSeedExcelTemplate}
-                  loading={seeding}
-                />
-              </View>
-            ) : null}
-          </View>
-
-          {/* FinanzAI Intelligence Engine Executive Banner */}
-          {topInsight ? (
-            <Pressable
-              onPress={() => router.push({ pathname: '/(main)/tips', params: { period } })}
-              style={({ pressed }) => [
-                styles.intelligenceHighlightCard,
-                topInsight.tone === 'critical' && styles.intelligenceCardCritical,
-                topInsight.tone === 'warning' && styles.intelligenceCardWarning,
-                pressed && styles.pressed,
-              ]}
-            >
-              <View style={styles.intelligenceHighlightLeft}>
-                <View
-                  style={[
-                    styles.intelligenceIconBadge,
-                    topInsight.tone === 'critical'
-                      ? styles.intelligenceBadgeCritical
-                      : styles.intelligenceBadgeDefault,
-                  ]}
-                >
-                  <Sparkles
-                    size={14}
-                    color={
-                      topInsight.tone === 'critical'
-                        ? '#F87171'
-                        : topInsight.tone === 'warning'
-                        ? '#F59E0B'
-                        : '#34D399'
-                    }
-                  />
-                </View>
-                <View style={styles.intelligenceTextCol}>
-                  <View style={styles.intelligenceMetaRow}>
-                    <Text style={styles.intelligenceEyebrow}>
-                      FINANZAI DIAGNÓSTICO
-                    </Text>
-                    <View style={styles.intelligenceScorePill}>
-                      <Text style={styles.intelligenceScorePillText}>
-                        Score: {intelligenceReport.overallScore}/100 · {intelligenceReport.healthStatus}
+              {accounts.length === 0 ? (
+                <View style={styles.seedBanner}>
+                  <View style={styles.seedBannerTextCol}>
+                    <View style={styles.seedTitleRow}>
+                      <Sparkles size={15} color={colors.textPrimary} />
+                      <Text style={styles.seedTitle}>
+                        ¿Reemplazar tu Excel con 1 clic?
                       </Text>
                     </View>
-                    {topInsight.potentialSavingsCLP ? (
-                      <View style={styles.intelligenceSavingsPill}>
-                        <Text style={styles.intelligenceSavingsPillText}>
-                          +{formatCLP(topInsight.potentialSavingsCLP)}/mes
-                        </Text>
-                      </View>
-                    ) : null}
+                    <Text style={styles.seedDesc}>
+                      Carga tu estructura base (Santander, CMR Falabella, Apple + YouTube + SmartFit, Crédito Vehicular Dic 2026 y Cuentas de Ahorro 4% y 0%).
+                    </Text>
                   </View>
-                  <Text style={styles.intelligenceTitle} numberOfLines={1}>
-                    {topInsight.title}
-                  </Text>
-                  <Text style={styles.intelligenceDesc} numberOfLines={2}>
-                    {topInsight.summary} {topInsight.actionStep}
-                  </Text>
+                  <TeslaButton
+                    title="Cargar Plantilla Excel"
+                    onPress={handleSeedExcelTemplate}
+                    loading={seeding}
+                  />
                 </View>
-              </View>
+              ) : null}
 
-              <View style={styles.intelligenceActionBtn}>
-                <Text style={styles.intelligenceActionBtnText}>Ver Análisis</Text>
-                <ChevronRight size={14} color="#34D399" />
-              </View>
-            </Pressable>
-          ) : null}
-        </GlassCard>
+              {/* FinanzAI Intelligence Engine Executive Banner */}
+              {topInsight ? (
+                <Pressable
+                  onPress={() =>
+                    router.push({ pathname: '/(main)/tips', params: { period } })
+                  }
+                  style={({ pressed }) => [
+                    styles.intelligenceHighlightCard,
+                    topInsight.tone === 'critical' && styles.intelligenceCardCritical,
+                    topInsight.tone === 'warning' && styles.intelligenceCardWarning,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={styles.intelligenceHighlightLeft}>
+                    <View
+                      style={[
+                        styles.intelligenceIconBadge,
+                        topInsight.tone === 'critical'
+                          ? styles.intelligenceBadgeCritical
+                          : styles.intelligenceBadgeDefault,
+                      ]}
+                    >
+                      <Sparkles
+                        size={14}
+                        color={
+                          topInsight.tone === 'critical'
+                            ? '#F87171'
+                            : topInsight.tone === 'warning'
+                            ? '#F59E0B'
+                            : '#34D399'
+                        }
+                      />
+                    </View>
+                    <View style={styles.intelligenceTextCol}>
+                      <View style={styles.intelligenceMetaRow}>
+                        <Text style={styles.intelligenceEyebrow}>
+                          FINANZAI DIAGNÓSTICO
+                        </Text>
+                        <View style={styles.intelligenceScorePill}>
+                          <Text style={styles.intelligenceScorePillText}>
+                            Score: {intelligenceReport.overallScore}/100 ·{' '}
+                            {intelligenceReport.healthStatus}
+                          </Text>
+                        </View>
+                        {topInsight.potentialSavingsCLP ? (
+                          <View style={styles.intelligenceSavingsPill}>
+                            <Text style={styles.intelligenceSavingsPillText}>
+                              +{formatCLP(topInsight.potentialSavingsCLP)}/mes
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={styles.intelligenceTitle} numberOfLines={1}>
+                        {topInsight.title}
+                      </Text>
+                      <Text style={styles.intelligenceDesc} numberOfLines={2}>
+                        {topInsight.summary} {topInsight.actionStep}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.intelligenceActionBtn}>
+                    <Text style={styles.intelligenceActionBtnText}>Ver Análisis</Text>
+                    <ChevronRight size={14} color="#34D399" />
+                  </View>
+                </Pressable>
+              ) : null}
+            </View>
+          }
+        />
 
         {/* Navegación Interna de Módulos (Resumen | Fijos | Tarjetas | Ahorro) */}
         <View style={styles.moduleTabsBar}>

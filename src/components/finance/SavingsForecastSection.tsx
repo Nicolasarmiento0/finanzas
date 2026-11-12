@@ -17,6 +17,12 @@ import {
   X,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAddIcon,
+  FintechExportIcon,
+  FintechSparklesIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -508,6 +514,81 @@ export function SavingsForecastSection({
 
   return (
     <View style={styles.container}>
+      {/* Hero Ambiental: Motor de Ahorro e Interés Compuesto */}
+      <AmbientHeroCard
+        capsuleLabel={
+          selectedAccount
+            ? `${selectedAccount.name} (${activeRateLabel})`
+            : `Ahorro Consolidado (${savingsAccounts.length})`
+        }
+        capsuleIcon={<PiggyBank size={13} color="#FFFFFF" />}
+        onPressCapsule={() => {
+          if (savingsAccounts.length === 0) return;
+          if (!selectedAccount) {
+            setSelectedTabId(savingsAccounts[0].id);
+          } else {
+            const idx = savingsAccounts.findIndex((a) => a.id === selectedAccount.id);
+            if (idx + 1 < savingsAccounts.length) {
+              setSelectedTabId(savingsAccounts[idx + 1].id);
+            } else {
+              setSelectedTabId('CONSOLIDATED');
+            }
+          }
+        }}
+        flameCount={expiringCommitments.length}
+        ringPercent={
+          activeForecast.finalBalance > 0
+            ? Math.min(
+                100,
+                Math.round(
+                  (activeForecast.totalDeposited /
+                    Math.max(1, activeForecast.finalBalance)) *
+                    100
+                )
+              )
+            : 0
+        }
+        eyebrowLabel={`Proyección a ${monthsAhead} meses (${formatPeriodFull(targetFullPeriod)})`}
+        badgeText={
+          activeForecast.totalInterest > 0
+            ? `+${formatCLP(activeForecast.totalInterest)} interés`
+            : `${monthsAhead} meses`
+        }
+        badgeArrow="↑"
+        heroValue={formatCLP(activeForecast.finalBalance)}
+        subtitle={`Capital depositado ${formatCLP(activeForecast.totalDeposited)} · Intereses ganados ${formatCLP(activeForecast.totalInterest)}`}
+        actions={[
+          {
+            id: 'new-savings',
+            label: 'Nueva',
+            icon: <FintechAddIcon active={showEditor && !editingAccountId} />,
+            onPress: openCreateForm,
+            active: showEditor && !editingAccountId,
+          },
+          {
+            id: 'ten-percent',
+            label: '+10% IA',
+            icon: <FintechSparklesIcon active={applyTenPercentSurplus} />,
+            onPress: () => setApplyTenPercentSurplus((prev) => !prev),
+            active: applyTenPercentSurplus,
+          },
+          {
+            id: 'export-csv',
+            label: 'Reporte',
+            icon: <FintechExportIcon />,
+            onPress: () =>
+              exportForecastReportToCsv({
+                period,
+                monthsAhead,
+                accounts,
+                recurringItems,
+                selectedAccountId: selectedTabId,
+              }),
+          },
+        ]}
+        onPressOrb={openCreateForm}
+      />
+
       {/* Cabecera del Módulo con Botón para Agregar Nueva Cuenta de Ahorro */}
       <View style={styles.headerRow}>
         <View style={styles.headerTextCol}>

@@ -27,6 +27,11 @@ import {
   X,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAddIcon,
+  FintechWalletIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -407,6 +412,43 @@ export function WalletSection({
 
   return (
     <View style={styles.container}>
+      {/* =====================================================================
+          HERO AMBIENTAL: BILLETERA Y DISPONIBLE RESTANTE HOY (SAFE-TO-SPEND)
+         ===================================================================== */}
+      <AmbientHeroCard
+        capsuleLabel={`Billetera · ${formatPeriodFull(period)}`}
+        capsuleIcon={<Wallet size={12} color="#FFFFFF" />}
+        onPrevPeriod={() => onChangePeriod(shiftPeriod(period, -1))}
+        onNextPeriod={() => onChangePeriod(shiftPeriod(period, 1))}
+        flameCount={periodExpenses.length}
+        flameAlert={spentRatio > 85}
+        ringPercent={Math.max(0, 100 - spentRatio)}
+        ringAlert={spentRatio > 85}
+        eyebrowLabel="Disponible restante hoy"
+        badgeText={`${formatCLP(dailyBudgetSuggested)} / día (${remainingDaysInMonth}d)`}
+        badgeArrow={remainingFreeBudget > 0 ? '↑' : '↓'}
+        badgeNegative={remainingFreeBudget <= 0}
+        heroValue={formatCLP(remainingFreeBudget)}
+        subtitle={`Sueldo libre inicial ${formatCLP(initialFreeBudget)} · Gastado variables ${formatCLP(totalSpentInVariables)}`}
+        actions={[
+          {
+            id: 'new-expense',
+            label: 'Gasto',
+            icon: <FintechAddIcon active={showExpenseForm} />,
+            onPress: () => setShowExpenseForm((prev) => !prev),
+            active: showExpenseForm,
+          },
+          {
+            id: 'new-checking',
+            label: 'Cuentas',
+            icon: <FintechWalletIcon active={showCheckingForm} />,
+            onPress: openCreateChecking,
+            active: showCheckingForm,
+          },
+        ]}
+        onPressOrb={() => setShowExpenseForm((prev) => !prev)}
+      />
+
       {/* =====================================================================
           1. HEADER Y SELECTOR DE PERIODO
          ===================================================================== */}

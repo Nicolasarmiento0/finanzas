@@ -32,6 +32,11 @@ import {
   Zap,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAddIcon,
+  FintechAnalyticsIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { PrivacyToggleButton } from '@/components/ui/PrivacyToggleButton';
 import { usePrivacy } from '@/context/PrivacyContext';
@@ -311,6 +316,52 @@ export function FinancialTipsSection({
 
   return (
     <View style={styles.container}>
+      {/* Hero Ambiental: FinanzAI Diagnóstico Cuantitativo */}
+      <AmbientHeroCard
+        capsuleLabel={`FinanzAI Diagnóstico · ${formatPeriodFull(period)}`}
+        capsuleIcon={<Sparkles size={12} color="#FFFFFF" />}
+        onPressCapsule={
+          onChangePeriod ? () => onChangePeriod(getCurrentPeriod()) : undefined
+        }
+        onPrevPeriod={
+          onChangePeriod
+            ? () => onChangePeriod(shiftPeriod(period, -1))
+            : undefined
+        }
+        onNextPeriod={
+          onChangePeriod
+            ? () => onChangePeriod(shiftPeriod(period, 1))
+            : undefined
+        }
+        flameCount={report.insights.length}
+        flameAlert={report.overallScore < 65}
+        ringPercent={report.overallScore}
+        ringAlert={report.overallScore < 50}
+        eyebrowLabel="Ahorro potencial identificado"
+        badgeText={`Score ${report.overallScore}/100 · ${report.healthStatus}`}
+        badgeArrow={report.overallScore >= 65 ? '↑' : '↓'}
+        badgeNegative={report.overallScore < 50}
+        heroValue={`${formatCLP(report.totalPotentialSavingsMonthlyCLP)}/mes`}
+        subtitle={`Equivale a ${formatCLP(report.totalPotentialSavingsAnnualCLP)} al año canalizables a ahorro o inversión`}
+        actions={[
+          {
+            id: 'new-rule',
+            label: 'Regla',
+            icon: <FintechAddIcon active={showAddForm} />,
+            onPress: () => setShowAddForm((prev) => !prev),
+            active: showAddForm,
+          },
+          {
+            id: 'all-insights',
+            label: 'Análisis',
+            icon: <FintechAnalyticsIcon active={selectedTipCategory === 'all'} />,
+            onPress: () => setSelectedTipCategory('all'),
+            active: selectedTipCategory === 'all',
+          },
+        ]}
+        onPressOrb={() => setShowAddForm((prev) => !prev)}
+      />
+
       {/* 1. Consola de Inteligencia Financiera FinanzAI (Cabecera Ejecutiva) */}
       <GlassCard>
         <View style={styles.headerRow}>

@@ -480,6 +480,23 @@
 
 ---
 
+## [feat-cards-3d-wallet-bento-showcase] - Consola Visual Bento y Tarjetero 3D Interactivo (Wallet Pocket) en Tarjetas de Crédito
+- **Estado:** Estable
+- **Descripción:** Experiencia visual Dark-First Liquid Glass en la sección de Tarjetas de Crédito y Manejo de Cupos que incorpora: (1) **Hero Ambiental de Cupo Disponible** con halo radial azul/esmeralda, píldora de selección rápida de plástico, indicadores circulares de alertas de corte (`🔥`) y anillo SVG de porcentaje de utilización, botones circulares de acción rápida (`+ Nueva`, `Editar`) y orbe esférico luminoso interactivo; (2) **Tarjetero 3D Esculpido (Wallet Pocket)** en cuero oscuro con costuras vectoriales SVG de donde se asoman las tarjetas apiladas con sus colores reales y monto disponible, permitiendo tocar cualquier plástico para traerlo al frente y desplegar su detalle e ítems; y (3) **Widgets Bento Inferiores** de **Facturado del Mes** y **Próximo Corte / Facturación**.
+- **Archivos / Rutas Clave:**
+  - `src/components/finance/CreditCardsSection.tsx` (`CreditCardsSection`, `getWalletStripPalette`, `handleSelectWalletCard`, `portfolioStats`, `orderedWalletStack`)
+- **Puntos de Contacto / Interfaces:**
+  - **Estados Visuales Locales:** `selectedWalletCardId`, `showAllCardsExpanded`, `walletPullAnim`.
+  - **Preservación de Interfaz:** Mantiene 100% intactos los props `CreditCardsSectionProps`, cálculos de `calculateCreditCardMetrics` y operaciones CRUD de tarjetas, cargos en cuotas y sub-ítems.
+- **Dependencias Internas:**
+  - `feat-cards-visual-plastics`
+  - `feat-cards-quota-and-billing-alerts`
+  - `feat-cards-charges-and-installments`
+  - `feat-privacy-camouflage-mode`
+  - `feat-ui-liquid-glass-design-system`
+
+---
+
 ## [feat-savings-accounts-and-strategies] - Gestión de Múltiples Cuentas de Ahorro (Con/Sin Interés, Aporte Fijo o % de Superávit)
 - **Estado:** Estable
 - **Descripción:** Permite crear, editar y eliminar múltiples cuentas de ahorro (`type = 'savings'`) tanto con rentabilidad anual compuesta (`annualRate > 0`, ej. 4% anual) como de liquidez pura (`0%`), configurando su estrategia de depósito mensual en modalidad **Aporte Fijo Mensual (`FIXED`)** o **Porcentaje del Superávit Mensual (`SURPLUS`)**, e incluye un inicializador rápido 1-clic de cuentas duales (`4%` y `0%`).
@@ -683,5 +700,34 @@
   - `feat-finanzai-query-engine`
   - `feat-privacy-camouflage-mode`
   - `feat-ui-liquid-glass-design-system`
+
+---
+
+## [feat-ui-ambient-hero-card] - Sistema Transversal de Cabecera Ambiental Liquid Glass y Acciones Circulares
+- **Estado:** Estable
+- **Descripción:** Componente visual reutilizable (`AmbientHeroCard`) que unifica la estética de cabecera en todas las pantallas y pestañas de FinanzApp: fondo `#0B101B` con doble halo radial SVG (`heroBlueOrbGlow` + `heroEmeraldSideGlow`), píldora superior interactiva con selector `< Mes >` integrado (`onPrevPeriod`, `onNextPeriod`), contador de alertas con ícono de llama (`Flame`), anillo circular SVG de porcentaje (`36×36px`), monto principal gigante con `tabular-nums` y badge de variación, fila inferior de botones circulares de acción rápida (`52×52px` con `gap: 10`) con iconografía vectorial fintech duotono/squircle a medida (`FintechAddIcon`, `FintechGoalsIcon`, `FintechAnalyticsIcon`, `FintechSparklesIcon`, `FintechExportIcon`, `FintechProfileIcon`, `FintechWalletIcon`, `FintechCheckIcon`, `FintechCopyIcon`, `FintechLogoutIcon`, `FintechCartIcon`) y orbe azul luminoso interactivo (`52×52px`).
+- **Archivos / Rutas Clave:**
+  - `src/components/ui/AmbientHeroCard.tsx` (`AmbientHeroCard`, `AmbientHeroAction`, `AmbientHeroCardProps`, `FintechAddIcon`, `FintechGoalsIcon`, `FintechAnalyticsIcon`, `FintechSparklesIcon`, `FintechExportIcon`, `FintechProfileIcon`, `FintechWalletIcon`, `FintechCheckIcon`, `FintechCopyIcon`, `FintechLogoutIcon`, `FintechCartIcon`)
+  - `src/app/(main)/dashboard.tsx` (`DashboardScreen`)
+  - `src/components/finance/ExecutiveSummarySection.tsx` (`ExecutiveSummarySection`)
+  - `src/components/finance/WalletSection.tsx` (`WalletSection`)
+  - `src/components/finance/FixedItemsSection.tsx` (`FixedItemsSection`)
+  - `src/components/finance/CreditCardsSection.tsx` (`CreditCardsSection`)
+  - `src/components/finance/SavingsForecastSection.tsx` (`SavingsForecastSection`)
+  - `src/components/finance/FuturePurchasesSection.tsx` (`FuturePurchasesSection`)
+  - `src/components/finance/FinancialTipsSection.tsx` (`FinancialTipsSection`)
+  - `src/app/(main)/profile.tsx` (`ProfileScreen`)
+- **Puntos de Contacto / Interfaces:**
+  - **Componente UI:** `<AmbientHeroCard capsuleLabel capsuleIcon ringPercent eyebrowLabel heroValue subtitle actions onPressOrb footerContent />`.
+- **Dependencias Internas:**
+  - `feat-ui-liquid-glass-design-system`
+  - `feat-dashboard-console`
+  - `feat-summary-cashflow-and-simulator`
+  - `feat-wallet-safe-to-spend`
+  - `feat-fixed-monthly-checklist`
+  - `feat-savings-compound-forecast-engine`
+  - `feat-future-purchases-viability`
+  - `feat-intelligence-diagnostic-engine`
+  - `feat-profile-personal-data`
 
 ---

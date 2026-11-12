@@ -33,6 +33,12 @@ import {
   X,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAddIcon,
+  FintechCheckIcon,
+  FintechGoalsIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { usePrivacy } from '@/context/PrivacyContext';
@@ -598,6 +604,55 @@ export function FuturePurchasesSection({
 
   return (
     <View style={styles.sectionStack}>
+      {/* HERO AMBIENTAL: CAPACIDAD DE COMPRA Y VIABILIDAD DE METAS */}
+      <AmbientHeroCard
+        capsuleLabel={`Compras Futuras · ${formatPeriodFull(period)}`}
+        capsuleIcon={<ShoppingBag size={13} color="#FFFFFF" />}
+        flameCount={activeItems.length}
+        ringPercent={overallHealthScore}
+        ringAlert={overallHealthScore < 50}
+        eyebrowLabel="Capacidad de compra al contado hoy"
+        badgeText={`Safe ${formatCLP(baselineEval.cashPath.currentSafePerDay)}/día`}
+        badgeArrow={baselineEval.cashPath.safeAvailableToday > 0 ? '↑' : '↓'}
+        badgeNegative={baselineEval.cashPath.safeAvailableToday <= 0}
+        heroValue={formatCLP(baselineEval.cashPath.safeAvailableToday)}
+        subtitle={
+          nextMilestone
+            ? `Próximo impulso +${formatCLP(nextMilestone.releasedMonthlyAmount)}/mes desde ${nextMilestone.releaseLabel}`
+            : `${activeItems.length} meta(s) en evaluación · ${purchasedItems.length} comprada(s)`
+        }
+        actions={[
+          {
+            id: 'new-purchase',
+            label: 'Nueva',
+            icon: <FintechAddIcon active={showForm && !editingId} />,
+            onPress: () => {
+              resetForm();
+              setShowForm((prev) => !prev);
+            },
+            active: showForm && !editingId,
+          },
+          {
+            id: 'view-active',
+            label: 'Metas',
+            icon: <FintechGoalsIcon active={statusView === 'active'} />,
+            onPress: () => setStatusView('active'),
+            active: statusView === 'active',
+          },
+          {
+            id: 'view-purchased',
+            label: 'Logradas',
+            icon: <FintechCheckIcon active={statusView === 'purchased'} />,
+            onPress: () => setStatusView('purchased'),
+            active: statusView === 'purchased',
+          },
+        ]}
+        onPressOrb={() => {
+          resetForm();
+          setShowForm((prev) => !prev);
+        }}
+      />
+
       {/* CABECERA EJECUTIVA DE CAPACIDAD DE COMPRA (3 Tarjetas) */}
       <View style={[styles.kpiGrid, isDesktop && styles.kpiGridDesktop]}>
         {/* Tarjeta 1: Presupuesto Seguro para Compras Hoy */}

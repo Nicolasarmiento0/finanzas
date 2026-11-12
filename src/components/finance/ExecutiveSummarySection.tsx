@@ -25,6 +25,13 @@ import {
   Wallet,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechCheckIcon,
+  FintechExportIcon,
+  FintechGoalsIcon,
+  FintechWalletIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -188,6 +195,56 @@ export function ExecutiveSummarySection({
 
   return (
     <View style={styles.container}>
+      {/* =====================================================================
+          HERO AMBIENTAL: OPERATIVA DEL MES Y FLUJO DE CAJA LIBRE
+         ===================================================================== */}
+      <AmbientHeroCard
+        capsuleLabel={`Operativa · ${formatPeriodFull(period)}`}
+        capsuleIcon={<PieChart size={12} color="#FFFFFF" />}
+        onPressCapsule={() => onChangePeriod(getCurrentPeriod())}
+        onPrevPeriod={() => onChangePeriod(shiftPeriod(period, -1))}
+        onNextPeriod={() => onChangePeriod(shiftPeriod(period, 1))}
+        flameCount={`${paidExpensesCount}/${activeExpenses.length}`}
+        flameAlert={paidExpensesCount < activeExpenses.length}
+        onPressFlame={() => onNavigateTab('fixed')}
+        ringPercent={savingsCapacityPercent}
+        ringAlert={monthlyFreeCash < 0}
+        eyebrowLabel="Flujo de caja libre estimado"
+        badgeText={`${savingsCapacityPercent}% disponible`}
+        badgeArrow={monthlyFreeCash >= 0 ? '↑' : '↓'}
+        badgeNegative={monthlyFreeCash < 0}
+        heroValue={formatCLP(monthlyFreeCash)}
+        subtitle={`Ingresos fijos ${formatCLP(monthlyIncome)} · Gastos fijos ${formatCLP(monthlyExpense)}`}
+        actions={[
+          {
+            id: 'fixed',
+            label: 'Checklist',
+            icon: <FintechCheckIcon />,
+            onPress: () => onNavigateTab('fixed'),
+          },
+          {
+            id: 'wallet',
+            label: 'Billetera',
+            icon: <FintechWalletIcon />,
+            onPress: () => onNavigateTab('wallet'),
+          },
+          {
+            id: 'savings',
+            label: 'Metas',
+            icon: <FintechGoalsIcon />,
+            onPress: () => onNavigateTab('savings'),
+          },
+          {
+            id: 'export',
+            label: exportingMonth ? 'CSV...' : 'Reporte',
+            icon: <FintechExportIcon />,
+            onPress: handleExportMonth,
+            disabled: exportingMonth,
+          },
+        ]}
+        onPressOrb={() => onNavigateTab('cards')}
+      />
+
       {/* =====================================================================
           OPERATIVA DEL MES: FLUJO DE CAJA LIBRE MENSUAL ESTIMADO
          ===================================================================== */}

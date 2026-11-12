@@ -22,6 +22,12 @@ import {
 } from 'lucide-react-native';
 import { ScreenContainer } from '@/components/layout/ScreenContainer';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechCheckIcon,
+  FintechCopyIcon,
+  FintechLogoutIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -194,6 +200,42 @@ export default function ProfileScreen() {
   return (
     <ScreenContainer centered={false} maxWidth={920}>
       <View style={styles.pageStack}>
+        {/* Hero Ambiental del Perfil */}
+        <AmbientHeroCard
+          capsuleLabel={`Configuración de Cuenta · ${user?.currency || 'CLP'}`}
+          capsuleIcon={<UserIcon size={13} color="#FFFFFF" />}
+          flameCount={1}
+          ringPercent={100}
+          eyebrowLabel="Perfil sincronizado y activo"
+          badgeText={`${user?.currency || 'CLP'} · Activo`}
+          badgeArrow="↑"
+          heroValue={user?.name || 'Usuario'}
+          subtitle={`${user?.email || ''} · ID: ${(user?.id || '').slice(0, 12)}...`}
+          actions={[
+            {
+              id: 'copy-id',
+              label: idCopied ? 'Copiado' : 'Copiar ID',
+              icon: <FintechCopyIcon active={idCopied} />,
+              onPress: handleCopyId,
+              active: idCopied,
+            },
+            {
+              id: 'save-info',
+              label: savingInfo ? 'Guardando' : 'Guardar',
+              icon: <FintechCheckIcon />,
+              onPress: handleSavePersonalInfo,
+              disabled: savingInfo,
+            },
+            {
+              id: 'logout',
+              label: 'Salir',
+              icon: <FintechLogoutIcon />,
+              onPress: handleLogout,
+            },
+          ]}
+          onPressOrb={handleCopyId}
+        />
+
         {/* Tarjeta de Cabecera del Perfil */}
         <GlassCard>
           <View style={styles.profileHeader}>

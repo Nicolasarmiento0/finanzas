@@ -15,6 +15,10 @@ import {
   X,
 } from 'lucide-react-native';
 import { GlassCard } from '@/components/ui/GlassCard';
+import {
+  AmbientHeroCard,
+  FintechAddIcon,
+} from '@/components/ui/AmbientHeroCard';
 import { GlassInput } from '@/components/ui/GlassInput';
 import { TeslaButton } from '@/components/ui/TeslaButton';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -579,6 +583,34 @@ export function FixedItemsSection({
 
   return (
     <View style={styles.container}>
+      {/* Hero Ambiental: Checklist de Ingresos y Compromisos Fijos */}
+      <AmbientHeroCard
+        capsuleLabel={`Checklist Fijos · ${formatPeriodFull(period)}`}
+        capsuleIcon={<CheckCircle2 size={12} color="#FFFFFF" />}
+        onPrevPeriod={() => onChangePeriod(shiftPeriod(period, -1))}
+        onNextPeriod={() => onChangePeriod(shiftPeriod(period, 1))}
+        flameCount={`${totalPaidCount}/${totalCommitmentsCount}`}
+        flameAlert={!isAllPaid && totalCommitmentsCount > 0}
+        ringPercent={paidPercent}
+        ringAlert={monthlySurplus < 0}
+        eyebrowLabel="Remanente libre post-pago"
+        badgeText={`${paidPercent}% pagado`}
+        badgeArrow={monthlySurplus >= 0 ? '↑' : '↓'}
+        badgeNegative={monthlySurplus < 0}
+        heroValue={formatCLP(monthlySurplus)}
+        subtitle={`Ingresos ${formatCLP(totalIncome)} · Compromisos ${formatCLP(totalMonthlyCommitments)} · Pendiente ${formatCLP(pendingCommitmentsAmount)}`}
+        actions={[
+          {
+            id: 'new-item',
+            label: 'Nuevo',
+            icon: <FintechAddIcon active={showAddForm} />,
+            onPress: () => setShowAddForm((prev) => !prev),
+            active: showAddForm,
+          },
+        ]}
+        onPressOrb={() => setShowAddForm((prev) => !prev)}
+      />
+
       {/* Selector de Periodo Mensual (Permite verificar vigencia temporal mes a mes) */}
       <GlassCard style={styles.periodCard}>
         <View style={styles.periodHeader}>
