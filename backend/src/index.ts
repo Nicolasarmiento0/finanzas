@@ -1,9 +1,17 @@
 import { Context, Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { generateSessionToken, hashPassword, hashToken, verifyPassword } from './auth';
+import {
+  BackendConversationSlots,
+  clearFinanzAIHistory,
+  loadFinanzAIHistory,
+  runWorkersAIChatTurn,
+} from './finanzai';
 
 export type Bindings = {
   DB: D1Database;
+  AI?: Ai;
+  FINANZAI_MODEL?: string;
 };
 
 export type AccountType = 'checking' | 'credit_card' | 'savings' | 'loan';
@@ -1825,6 +1833,76 @@ app.delete('/future-purchases/:id', async (c) => {
     .run();
 
   return c.json({ success: true });
+});
+
+// ============================================================================
+// FINANZAI CHAT CONVERSACIONAL (Workers AI + Herramientas Deterministas + D1)
+// ============================================================================
+
+app.get('/finanzai/history', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  const data = await loadFinanzAIHistory(c.env.DB, user.id);
+  return c.json(data);
+});
+
+app.delete('/finanzai/history', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  await clearFinanzAIHistory(c.env.DB, user.id);
+  return c.json({ success: true });
+});
+
+app.post('/finanzai/chat', async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) {
+    return c.json({ error: 'No autorizado' }, 401);
+  }
+
+  let body: {
+    message?: string;
+    period?: string;
+    slots?: BackendConversationSlots;
+    history?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  } = {};
+
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: 'Cuerpo JSON inválido' }, 400);
+  }
+
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!message) {
+    return c.json({ error: 'El mensaje es obligatorio' }, 400);
+  }
+
+  const outcome = await runWorkersAIChatTurn({
+    ai: c.env.AI,
+    db: c.env.DB,
+    model: c.env.FINANZAI_MODEL,
+    userId: user.id,
+    message,
+    period: typeof body.period === 'string' ? body.period : undefined,
+    slots: body.slots,
+    history: Array.isArray(body.history) ? body.history : undefined,
+  });
+
+  if (!outcome.ok) {
+    return c.json({
+      ok: false,
+      fallback: true,
+      reason: outcome.reason,
+    });
+  }
+
+  return c.json(outcome);
 });
 
 export default app;

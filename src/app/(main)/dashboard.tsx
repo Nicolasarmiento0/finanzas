@@ -101,7 +101,12 @@ export default function DashboardScreen() {
   const router = useRouter();
   const { isDesktop } = useResponsive();
   const { isPrivacyEnabled } = usePrivacy();
-  const { syncFinancialData } = useFinanzAI();
+  const {
+    syncFinancialData,
+    mutationVersion,
+    requestedTab,
+    clearRequestedTab,
+  } = useFinanzAI();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [seeding, setSeeding] = useState(false);
@@ -118,6 +123,7 @@ export default function DashboardScreen() {
 
   const mainScrollRef = useRef<ScrollView>(null);
   const futurePurchasesTopYRef = useRef<number>(0);
+  const lastMutationVersionRef = useRef<number>(0);
 
   const handleScrollToCardsEdit = useCallback(() => {
     mainScrollRef.current?.scrollTo({ y: 0, animated: true });
@@ -176,6 +182,22 @@ export default function DashboardScreen() {
       period,
     });
   }, [accounts, recurringItems, payments, variableExpenses, futurePurchases, period, syncFinancialData]);
+
+  // Recargar datos del Dashboard cuando FinanzAI ejecuta una Action Card (gasto, wishlist, pago)
+  useEffect(() => {
+    if (mutationVersion > lastMutationVersionRef.current) {
+      lastMutationVersionRef.current = mutationVersion;
+      loadAllData();
+    }
+  }, [mutationVersion, loadAllData]);
+
+  // Cambiar a la pestaña solicitada desde una Action Card de navegación de FinanzAI
+  useEffect(() => {
+    if (requestedTab) {
+      setActiveTab(requestedTab);
+      clearRequestedTab();
+    }
+  }, [requestedTab, clearRequestedTab]);
 
   // Cargar plantilla inicial basada en el Excel y el Motor de Ahorro Dual
   const handleSeedExcelTemplate = async () => {

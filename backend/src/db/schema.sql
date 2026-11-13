@@ -140,4 +140,21 @@ CREATE TABLE IF NOT EXISTS future_purchases (
 CREATE INDEX IF NOT EXISTS idx_future_purchases_user_id ON future_purchases(user_id);
 CREATE INDEX IF NOT EXISTS idx_future_purchases_status ON future_purchases(user_id, status);
 
+-- Tabla de historial conversacional de FinanzAI (Fase 3: Persistencia multi-dispositivo en D1)
+CREATE TABLE IF NOT EXISTS finanzai_messages (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'local',
+  structured_json TEXT,
+  slots_json TEXT,
+  period TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_finanzai_messages_user_created ON finanzai_messages(user_id, created_at);
+
+
 

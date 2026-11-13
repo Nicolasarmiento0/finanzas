@@ -1,0 +1,444 @@
+{
+  "version": "1.0.0",
+  "locale": "es-CL",
+  "currency": {
+    "code": "CLP",
+    "symbol": "$",
+    "decimals": 0
+  },
+  "slangAndUnits": {
+    "multipliers": [
+      {
+        "tokens": ["palo", "palos", "millon", "millones", "m"],
+        "factor": 1000000
+      },
+      {
+        "tokens": ["luca", "lucas", "k", "mil"],
+        "factor": 1000
+      },
+      {
+        "tokens": ["gamba", "gambas"],
+        "factor": 100
+      }
+    ],
+    "idioms": {
+      "quedar pato": {
+        "meaning": "liquidez cero o déficit mensual",
+        "hintIntents": ["survival_health", "what_if_spend"]
+      },
+      "descalzar": {
+        "meaning": "romper el equilibrio del flujo de caja mensual",
+        "hintIntents": ["what_if_spend", "safe_to_save"]
+      },
+      "gustito": {
+        "meaning": "gasto discrecional no esencial",
+        "hintIntents": ["what_if_spend", "wishlist_evaluation"]
+      },
+      "carrete": {
+        "meaning": "salida o entretenimiento de fin de semana",
+        "category": "entretenimiento",
+        "hintIntents": ["what_if_spend"]
+      },
+      "pie": {
+        "meaning": "pago inicial o abono parcial",
+        "hintIntents": ["wishlist_evaluation", "what_if_spend"]
+      },
+      "al tiro": {
+        "meaning": "pago inmediato al contado",
+        "paymentMode": "cash"
+      }
+    }
+  },
+  "intents": {
+    "greeting_help": {
+      "priority": 10,
+      "matchMode": "boundary",
+      "strongPhrases": ["que haces", "como funciona", "quien eres"],
+      "keywords": [
+        "hola",
+        "buenas",
+        "buen dia",
+        "buenos dias",
+        "buenas tardes",
+        "buenas noches",
+        "hello",
+        "hi",
+        "hey",
+        "ayuda",
+        "menu",
+        "comandos",
+        "empezar",
+        "inicio"
+      ]
+    },
+    "wishlist_evaluation": {
+      "priority": 95,
+      "strongPhrases": [
+        "futuras compras",
+        "futura compra",
+        "compras futuras",
+        "lista de deseos",
+        "plan optimo para comprar",
+        "que de mis futuras compras",
+        "que puedo comprar de mi lista",
+        "proyectos de compra",
+        "simulador de compras"
+      ],
+      "keywords": ["mis deseos", "wishlist"]
+    },
+    "future_savings_projection": {
+      "priority": 90,
+      "requiresHorizonBoost": 30,
+      "strongPhrases": [
+        "cuanto podre ahorrar",
+        "cuanto podria ahorrar",
+        "cuanto ahorrare",
+        "cuanto voy a ahorrar",
+        "cuanto podre juntar",
+        "cuanto juntare",
+        "cuanto podre guardar",
+        "cuanto guardare",
+        "cuanto tendre ahorrado",
+        "proyeccion de ahorro",
+        "proyeccion para"
+      ],
+      "keywords": [
+        "ahorrar en",
+        "ahorro en",
+        "juntar en",
+        "ahorrar",
+        "ahorro",
+        "juntar",
+        "guardar",
+        "proyeccion",
+        "tendre ahorrado"
+      ],
+      "negativeKeywords": ["cuando llegare", "para llegar", "pagar tarjeta o ahorrar", "pago la tarjeta o ahorro"]
+    },
+    "goal_target_reach": {
+      "priority": 92,
+      "requiresAmountBoost": 20,
+      "strongPhrases": [
+        "cuando llegare",
+        "cuando llego",
+        "cuando tendre",
+        "cuanto me falta para",
+        "en cuanto tiempo llego",
+        "meta de ahorro"
+      ],
+      "keywords": ["para juntar", "para llegar a", "meta para"]
+    },
+    "income_cashflow": {
+      "priority": 80,
+      "strongPhrases": [
+        "cuanto gano",
+        "cual es mi sueldo",
+        "cuanto es mi sueldo",
+        "cuanto me queda libre",
+        "flujo de caja",
+        "superavit mensual"
+      ],
+      "keywords": ["mis ingresos", "ingresos totales", "total de ingresos", "flujo libre", "margen libre", "sueldo"]
+    },
+    "windfall_bonus": {
+      "priority": 85,
+      "requiresAmountBoost": 15,
+      "strongPhrases": [
+        "me llego un bono",
+        "recibo un bono",
+        "reparto de utilidades",
+        "devolucion de impuestos",
+        "ingreso extra"
+      ],
+      "keywords": ["bono", "aguinaldo", "plata extra", "dinero extra"]
+    },
+    "credit_card_details": {
+      "priority": 84,
+      "strongPhrases": [
+        "cupo de mi tarjeta",
+        "cupo de la tarjeta",
+        "cupo disponible",
+        "limite de credito",
+        "cuando corta la tarjeta",
+        "fecha de corte",
+        "dia de corte",
+        "dia de facturacion",
+        "cuando factura la tarjeta"
+      ],
+      "keywords": ["cupo santander", "cupo falabella", "cupo cmr", "cupo de mis tarjetas", "cupo"]
+    },
+    "total_debt_audit": {
+      "priority": 82,
+      "strongPhrases": [
+        "cuanto debo en total",
+        "todas mis deudas",
+        "deuda total",
+        "sumando todo cuanto debo"
+      ],
+      "keywords": ["total deudas", "debo en total", "mis creditos"]
+    },
+    "subscriptions_audit": {
+      "priority": 80,
+      "strongPhrases": [
+        "cuanto gasto en suscripciones",
+        "que suscripciones tengo",
+        "suscripciones activas",
+        "gastos en streaming"
+      ],
+      "keywords": ["mis suscripciones", "suscripciones", "apps mensuales", "netflix", "spotify"]
+    },
+    "shared_savings_partner": {
+      "priority": 82,
+      "strongPhrases": [
+        "ahorro en pareja",
+        "cuenta compartida",
+        "cuanto tenemos ahorrado",
+        "cuanto aporta mi pareja",
+        "cuanto ha puesto mi pareja"
+      ],
+      "keywords": ["ahorro compartido", "ahorros en pareja", "pareja"]
+    },
+    "card_vs_savings": {
+      "priority": 88,
+      "strongPhrases": [
+        "pagar tarjeta o ahorrar",
+        "pago la tarjeta o ahorro",
+        "conviene pagar la tarjeta",
+        "pagar la tarjeta o ahorrar",
+        "pagar cuotas o ahorrar",
+        "tarjeta o ahorro"
+      ],
+      "keywords": ["liquidar tarjeta", "prepagar cuotas", "intereses tarjeta", "pagar el minimo", "amortizar tarjeta"]
+    },
+    "invest_recommendation": {
+      "priority": 78,
+      "strongPhrases": [
+        "donde invertir",
+        "en que cuenta invertir",
+        "en que cuenta me conviene",
+        "cual cuenta da mas interes",
+        "donde me conviene meter la plata",
+        "que cuenta da mas",
+        "deposito a plazo",
+        "tasa de interes"
+      ],
+      "keywords": [
+        "mejor cuenta",
+        "donde ahorrar",
+        "invertir",
+        "inversion",
+        "rentabilidad",
+        "tasa",
+        "dap",
+        "cuenta de ahorro",
+        "consorcio",
+        "banco estado",
+        "bancoestado",
+        "fintual",
+        "tenpo",
+        "rendimiento"
+      ]
+    },
+    "safe_to_save": {
+      "priority": 87,
+      "strongPhrases": [
+        "cuanto puedo ahorrar hoy",
+        "cuanto me recomiendas ahorrar",
+        "ahorrar de mi saldo",
+        "dejar para fin de mes"
+      ],
+      "keywords": [
+        "cuanto puedo ahorrar",
+        "cuanto guardo",
+        "meter al ahorro",
+        "pasar al ahorro",
+        "guardar en el ahorro",
+        "cuanto puedo transferir",
+        "ahorro seguro",
+        "cuanto apartar"
+      ]
+    },
+    "what_if_spend": {
+      "priority": 75,
+      "requiresAmount": true,
+      "requiresAmountBoost": 25,
+      "strongPhrases": ["puedo gastar", "me alcanza para", "puedo comprar", "gasto de", "compra de"],
+      "keywords": [
+        "comprar",
+        "gastar",
+        "salir a",
+        "cena",
+        "asado",
+        "carrete",
+        "viaje",
+        "escapada",
+        "zapatillas",
+        "gustito",
+        "almuerzo",
+        "uber",
+        "descalzar"
+      ],
+      "negativeKeywords": ["futuras compras", "lista de deseos", "mis deseos"]
+    },
+    "pending_commitments": {
+      "priority": 76,
+      "strongPhrases": [
+        "que cuentas me faltan pagar",
+        "que debo este mes",
+        "gastos fijos pendientes",
+        "cuanto debo en la tarjeta",
+        "cuando vence la tarjeta",
+        "que me falta pagar"
+      ],
+      "keywords": ["cuentas pendientes", "cuotas pendientes", "deudas del mes", "pagos obligatorios", "cuentas por pagar"]
+    },
+    "survival_health": {
+      "priority": 77,
+      "strongPhrases": [
+        "como van mis finanzas",
+        "como estan mis finanzas",
+        "como va mi salud financiera",
+        "llego a fin de mes",
+        "cuantos meses sobrevivo",
+        "fondo de emergencia",
+        "score de salud",
+        "tengo suficiente plata"
+      ],
+      "keywords": ["como voy", "salud financiera", "estado financiero", "resumen financiero", "diagnostico"]
+    },
+    "category_audit": {
+      "priority": 74,
+      "strongPhrases": [
+        "en que gaste mas",
+        "donde se fue la plata",
+        "donde se fue mas plata",
+        "en que se va el dinero",
+        "en que categoria se fue mas dinero",
+        "delivery vs supermercado",
+        "fuga de dinero"
+      ],
+      "keywords": ["gasto en delivery", "categoria principal", "mis gastos variables", "en que categoria", "categoria"]
+    }
+  },
+  "entities": {
+    "categories": {
+      "alimentacion": {
+        "aliases": [
+          "comida",
+          "supermercado",
+          "super",
+          "almuerzo",
+          "colacion",
+          "despensa",
+          "feria",
+          "panaderia",
+          "delivery",
+          "restaurante"
+        ],
+        "merchants": ["lider", "jumbo", "santa isabel", "unimarc", "tottus", "pedidosya", "uber eats", "rappi", "cornershop"],
+        "subtypes": {
+          "delivery_dining": ["delivery", "pedidosya", "uber eats", "rappi", "restaurante", "cena", "sushi", "pizza"],
+          "groceries": ["supermercado", "super", "lider", "jumbo", "santa isabel", "unimarc", "tottus", "feria"]
+        }
+      },
+      "transporte": {
+        "aliases": ["pasaje", "bencina", "combustible", "estacionamiento", "peaje", "tag", "auto", "vehiculo", "movilidad"],
+        "merchants": ["metro", "bip", "uber", "cabify", "didi", "copec", "shell", "petrobras", "autopista"]
+      },
+      "vivienda": {
+        "aliases": ["arriendo", "dividendo", "hipoteca", "gastos comunes", "gc", "depa", "departamento", "casa"],
+        "merchants": []
+      },
+      "servicios": {
+        "aliases": ["luz", "agua", "gas", "internet", "fibra", "celular", "plan movil", "telefonia"],
+        "merchants": ["enel", "cge", "aguas andinas", "metrogas", "vtr", "entel", "movistar", "wom", "claro"]
+      },
+      "suscripciones": {
+        "aliases": ["streaming", "membresia", "app", "nube", "musica"],
+        "merchants": ["netflix", "spotify", "youtube", "disney", "max", "prime", "icloud", "apple", "chatgpt", "gamepass"]
+      },
+      "salud": {
+        "aliases": ["farmacia", "remedio", "medico", "consulta", "dentista", "isapre", "fonasa", "seguro medico"],
+        "merchants": ["cruz verde", "salcobrand", "ahumada", "dr simi", "bupa", "integramedica"]
+      },
+      "educacion": {
+        "aliases": ["mensualidad", "colegio", "universidad", "u", "matricula", "curso", "diplomado", "arancel"],
+        "merchants": []
+      },
+      "prestamo": {
+        "aliases": ["credito", "cuota", "prestamo", "credito consumo", "credito automotriz"],
+        "merchants": []
+      },
+      "entretenimiento": {
+        "aliases": ["cine", "concierto", "juego", "videojuego", "carrete", "panorama", "bar", "viaje", "escapada"],
+        "merchants": ["steam", "nintendo", "playstation", "cinemark", "hoyts", "ticketmaster"]
+      },
+      "fijo": {
+        "aliases": ["gasto fijo", "compromiso mensual", "cuenta fija"],
+        "merchants": []
+      },
+      "general": {
+        "aliases": ["otros", "varios", "imprevisto"],
+        "merchants": []
+      }
+    },
+    "cardBrands": {
+      "santander": ["santander", "worldmember", "world member", "latam pass", "santander latam"],
+      "falabella": ["cmr", "falabella", "cmr falabella", "elite cmr"],
+      "other": ["lider bci", "banco de chile", "bci", "scotiabank", "itau", "tenpo", "mach", "mercado pago", "cencosud"]
+    },
+    "paymentModes": {
+      "cash": ["contado", "al contado", "debito", "efectivo", "transferencia", "al tiro", "de una"],
+      "installments": ["cuota", "cuotas", "meses", "sin interes", "con interes", "credito", "tarjetazo"]
+    }
+  },
+  "followUpPatterns": [
+    {
+      "pattern": "\\b(?:y\\s+)?(?:en\\s+)?(\\d+)\\s+cuotas?\\b",
+      "updates": {
+        "paymentMode": "installments",
+        "installments": "$1"
+      },
+      "inheritIntentIfMissing": ["what_if_spend", "wishlist_evaluation"]
+    },
+    {
+      "pattern": "\\b(?:y\\s+)?(?:al\\s+contado|en\\s+efectivo|con\\s+debito)\\b",
+      "updates": {
+        "paymentMode": "cash",
+        "installments": 1
+      },
+      "inheritIntentIfMissing": ["what_if_spend", "wishlist_evaluation"]
+    },
+    {
+      "pattern": "\\b(?:y\\s+)?(?:si\\s+(?:pago|uso|es)\\s+)?(?:con\\s+(?:la\\s+)?)?(santander|cmr|falabella)\\b",
+      "updates": {
+        "cardBrand": "$1"
+      },
+      "inheritIntentIfMissing": ["what_if_spend", "credit_card_details", "wishlist_evaluation"]
+    },
+    {
+      "pattern": "\\b(?:y\\s+)?(?:si\\s+es\\s+)?(?:la\\s+mitad|50%)\\b",
+      "updates": {
+        "amountMultiplier": 0.5
+      },
+      "inheritIntentIfMissing": ["what_if_spend", "safe_to_save", "windfall_bonus", "goal_target_reach"]
+    }
+  ],
+  "domainContext": {
+    "glossary": {
+      "safe_to_spend": "Presupuesto libre del mes restante dividido por los días que quedan del mes calendario, sin descalzar gastos fijos.",
+      "net_worth_with_savings": "Ingresos mensuales + saldo total en cuentas de ahorro - deuda total activa.",
+      "net_worth_without_savings": "Ingresos mensuales - deuda total activa (mide margen operativo sin tocar ahorros).",
+      "temporal_validity": "Los ítems recurrentes y cuotas respetan start_date y end_date; al expirar, el flujo se libera automáticamente para ahorro futuro.",
+      "shared_savings_partner": "Cuentas de ahorro vinculadas entre 2 usuarios en D1 con inversión automática de roles (Tú vs Pareja).",
+      "ten_percent_surplus_rule": "Simulación que destina un 10% adicional del remanente libre del checklist al ahorro compuesto.",
+      "future_purchases_viability": "Evalúa deseos de compra como viable_today, viable_planned (al liberarse deudas) o postpone."
+    },
+    "responseRules": [
+      "Nunca inventes ni estimes montos: cita exclusivamente cifras devueltas por las herramientas o snapshot del servidor.",
+      "Formatea todos los montos en CLP sin decimales con separador de miles por punto (ejemplo: $45.000).",
+      "Usa español natural cercano a Chile cuando corresponda (sin abusar de jerga), claro y accionable.",
+      "Si el Modo Privado/Camuflaje está activo en el cliente, la UI enmascarará los montos antes de mostrarlos."
+    ]
+  }
+}

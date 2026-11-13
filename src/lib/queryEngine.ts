@@ -10,6 +10,7 @@ import {
   accountToSavingsAccount,
   buildMonthlySurplusList,
   calculateConsolidatedForecast,
+  calculateCreditCardMetrics,
   diffPeriodsInMonths,
   evaluateFuturePurchase,
   formatPeriodFull,
@@ -24,6 +25,17 @@ import {
   FinancialIntelligenceReport,
   generateFinancialIntelligence,
 } from '@/lib/intelligence';
+import rawFinanzAIKnowledge from '@/data/finanzaiKnowledge.json';
+import type { FinanzAIKnowledge, IntentKnowledgeRule } from '@/types/finanzaiKnowledge';
+
+const FINANZAI_KNOWLEDGE = rawFinanzAIKnowledge as unknown as FinanzAIKnowledge;
+
+/**
+ * Devuelve la base de conocimiento declarativa (vocabulario, entidades y contexto) usada por FinanzAI.
+ */
+export function getFinanzAIKnowledge(): FinanzAIKnowledge {
+  return FINANZAI_KNOWLEDGE;
+}
 
 export type QueryIntent =
   | 'greeting_help'
@@ -52,6 +64,60 @@ export interface QueryResultMetric {
   tone?: 'emerald' | 'amber' | 'coral' | 'blue' | 'neutral';
 }
 
+export type ProposedChatActionType =
+  | 'register_variable_expense'
+  | 'save_future_purchase'
+  | 'mark_recurring_paid'
+  | 'navigate_tab';
+
+export interface ProposedChatAction {
+  id: string;
+  type: ProposedChatActionType;
+  label: string;
+  description?: string;
+  confirmLabel?: string;
+  tone?: 'emerald' | 'amber' | 'blue';
+  payload: {
+    title?: string;
+    amount?: number;
+    category?: string;
+    account_id?: string | null;
+    period?: string;
+    payment_mode?: 'one_time_cash' | 'installments' | 'recurring_subscription';
+    installments_count?: number;
+    target_account_id?: string | null;
+    target_type?: 'recurring_item' | 'loan_installment' | 'credit_card';
+    target_id?: string;
+    tab?: 'summary' | 'wallet' | 'fixed' | 'cards' | 'savings' | 'future_purchases';
+  };
+}
+
+export interface ExtractedQueryEntities {
+  amount: number | null;
+  horizon: TargetHorizon | null;
+  category: string | null;
+  paymentMode: 'cash' | 'installments' | null;
+  installmentsCount: number | null;
+  cardBrand: 'santander' | 'falabella' | 'other' | null;
+  matchedCardId: string | null;
+  matchedCardName: string | null;
+  matchedFuturePurchase: FuturePurchase | null;
+  suggestedTitle: string | null;
+}
+
+export interface ConversationSlots {
+  lastIntent?: QueryIntent;
+  lastAmount?: number | null;
+  lastHorizon?: TargetHorizon | null;
+  lastItemName?: string | null;
+  lastCardId?: string | null;
+  lastCardBrand?: 'santander' | 'falabella' | 'other' | null;
+  lastPaymentMode?: 'cash' | 'installments' | null;
+  lastInstallments?: number | null;
+  lastCategory?: string | null;
+  lastFuturePurchaseId?: string | null;
+}
+
 export interface QueryEngineResult {
   intent: QueryIntent;
   title: string;
@@ -64,6 +130,9 @@ export interface QueryEngineResult {
   actionLabel?: string;
   actionType?: 'simulate_transfer' | 'view_cards' | 'view_fixed' | 'quick_pill';
   actionPayload?: string;
+  proposedActions?: ProposedChatAction[];
+  extractedEntities?: ExtractedQueryEntities;
+  updatedSlots?: ConversationSlots;
 }
 
 export interface QueryContextData {
@@ -195,30 +264,31 @@ export function extractTargetHorizonFromQuery(rawText: string, basePeriod: strin
 }
 
 /**
- * Parsea montos escritos en jerga chilena ('lucas', 'palos', 'k', 'mil') o en formato numérico ($50.000, 50000).
+ * Parsea montos escritos en jerga chilena ('palos', 'lucas', 'gambas', 'k', 'mil') o en formato numérico ($50.000, 50000).
  */
 export function extractAmountFromQuery(rawText: string): number | null {
   const text = normalizeQueryText(rawText);
 
-  // 1. Detectar expresiones coloquiales con "palos" o "millones" (ej. "1.5 palos", "2 palos", "1 millon")
-  const palosMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:palo|palos|millon|millones|m\b)/i);
-  if (palosMatch && palosMatch[1]) {
-    const num = parseFloat(palosMatch[1].replace(',', '.'));
-    if (!isNaN(num) && num > 0) {
-      return Math.round(num * 1000000);
+  // 1. Detectar multiplicadores coloquiales configurados en finanzaiKnowledge.json (de mayor a menor factor)
+  const sortedMultipliers = [...FINANZAI_KNOWLEDGE.slangAndUnits.multipliers].sort(
+    (a, b) => b.factor - a.factor
+  );
+  for (const rule of sortedMultipliers) {
+    if (!rule.tokens.length) continue;
+    const escapedTokens = rule.tokens
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const regex = new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(?:${escapedTokens})\\b`, 'i');
+    const match = text.match(regex);
+    if (match && match[1]) {
+      const num = parseFloat(match[1].replace(',', '.'));
+      if (!isNaN(num) && num > 0) {
+        return Math.round(num * rule.factor);
+      }
     }
   }
 
-  // 2. Detectar expresiones coloquiales con "lucas" o "k" o "mil" (ej. "40 lucas", "1.5 lucas", "100k", "50 mil")
-  const lucasMatch = text.match(/(\d+(?:[.,]\d+)?)\s*(?:luca|lucas|k\b|mil\b)/i);
-  if (lucasMatch && lucasMatch[1]) {
-    const num = parseFloat(lucasMatch[1].replace(',', '.'));
-    if (!isNaN(num) && num > 0) {
-      return Math.round(num * 1000);
-    }
-  }
-
-  // 3. Detectar números formateados chilenos (ej. "$45.000", "45.000", "45000")
+  // 2. Detectar números formateados chilenos (ej. "$45.000", "45.000", "45000")
   const numRegex = /(?:\$)?\b(\d{1,3}(?:\.\d{3})+|\d{4,9})\b/;
   const numMatch = rawText.match(numRegex);
   if (numMatch && numMatch[1]) {
@@ -229,7 +299,7 @@ export function extractAmountFromQuery(rawText: string): number | null {
     }
   }
 
-  // 4. Si es un número simple
+  // 3. Si es un número simple (>= 100)
   const smallNumMatch = text.match(/\b(\d{2,3})\b/);
   if (smallNumMatch && smallNumMatch[1]) {
     const smallParsed = parseInt(smallNumMatch[1], 10);
@@ -241,355 +311,431 @@ export function extractAmountFromQuery(rawText: string): number | null {
   return null;
 }
 
+function levenshteinDistance(a: string, b: string, maxDist = 2): number {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > maxDist) return maxDist + 1;
+
+  const prev = new Array<number>(b.length + 1);
+  const curr = new Array<number>(b.length + 1);
+  for (let j = 0; j <= b.length; j++) prev[j] = j;
+
+  for (let i = 1; i <= a.length; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    if (rowMin > maxDist) return maxDist + 1;
+    for (let j = 0; j <= b.length; j++) prev[j] = curr[j];
+  }
+  return prev[b.length];
+}
+
+function matchesTerm(normalized: string, term: string, matchMode: 'includes' | 'boundary' = 'includes'): boolean {
+  if (matchMode === 'boundary') {
+    return (
+      normalized === term ||
+      normalized.startsWith(`${term} `) ||
+      normalized.endsWith(` ${term}`)
+    );
+  }
+  if (term.length <= 3) {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(normalized);
+  }
+  return normalized.includes(term);
+}
+
 /**
- * Clasifica la intención de la consulta usando un diccionario ponderado de modismos y finanzas personales.
+ * Evalúa coincidencia exacta o tolerante a errores tipográficos leves (Levenshtein <= 1 ó 2).
+ * Retorna 1 para coincidencia exacta, 0.7 para fuzzy match y 0 si no coincide.
+ */
+function scoreTermMatch(
+  normalized: string,
+  tokens: string[],
+  term: string,
+  matchMode: 'includes' | 'boundary' = 'includes'
+): number {
+  if (matchesTerm(normalized, term, matchMode)) {
+    return 1;
+  }
+  if (matchMode === 'boundary' || term.length < 6) {
+    return 0;
+  }
+
+  const termWords = term.split(' ').filter((w) => w.length >= 6);
+  if (termWords.length === 0) return 0;
+
+  // Para palabras completas >= 6 chars, verificar coincidencia exacta o typo leve (Levenshtein <= 1 ó 2)
+  let matchedWords = 0;
+  for (const tw of termWords) {
+    const maxDist = tw.length >= 9 ? 2 : 1;
+    const hit = tokens.some((tok) => {
+      if (tok.length < 6) return false;
+      if (tok.includes(tw) || tw.includes(tok)) return true;
+      return levenshteinDistance(tok, tw, maxDist) <= maxDist;
+    });
+    if (hit) matchedWords++;
+  }
+
+  if (matchedWords === termWords.length) {
+    return 0.7;
+  }
+  return 0;
+}
+
+const STOPWORDS_TITLE = new Set([
+  'puedo', 'podria', 'debo', 'conviene', 'me', 'alcanza', 'para', 'comprar', 'gastar',
+  'pagar', 'hacer', 'ir', 'salir', 'en', 'un', 'una', 'unos', 'unas', 'el', 'la', 'los',
+  'las', 'de', 'del', 'con', 'sin', 'hoy', 'ahora', 'este', 'mes', 'por', 'favor',
+  'cuotas', 'cuota', 'contado', 'si', 'que', 'cuanto', 'y', 'o', 'a', 'mi', 'mis',
+]);
+
+function capitalizeWords(input: string): string {
+  return input
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function matchFuturePurchaseFromQuery(
+  normalized: string,
+  tokens: string[],
+  futurePurchases?: FuturePurchase[]
+): FuturePurchase | null {
+  if (!futurePurchases || futurePurchases.length === 0) return null;
+  const activeItems = futurePurchases.filter((fp) => fp.status !== 'purchased');
+  if (activeItems.length === 0) return null;
+
+  let bestItem: FuturePurchase | null = null;
+  let bestScore = 0;
+
+  for (const item of activeItems) {
+    const normTitle = normalizeQueryText(item.title);
+    if (!normTitle) continue;
+
+    if (normalized.includes(normTitle)) {
+      const score = 100 + normTitle.length;
+      if (score > bestScore) {
+        bestScore = score;
+        bestItem = item;
+      }
+      continue;
+    }
+
+    const titleTokens = normTitle
+      .split(' ')
+      .filter((t) => t.length >= 3 && !STOPWORDS_TITLE.has(t));
+    if (titleTokens.length === 0) continue;
+
+    let hits = 0;
+    for (const tt of titleTokens) {
+      const exactHit = tokens.some((qt) => qt === tt || (tt.length >= 5 && qt.includes(tt)));
+      if (exactHit) {
+        hits += 1;
+      } else if (tt.length >= 5) {
+        const fuzzyHit = tokens.some((qt) => qt.length >= 5 && levenshteinDistance(qt, tt, 1) <= 1);
+        if (fuzzyHit) hits += 0.8;
+      }
+    }
+
+    const coverage = hits / titleTokens.length;
+    if ((coverage >= 0.6 && hits >= 1) || hits >= 2) {
+      const score = coverage * 60 + hits * 10;
+      if (score > bestScore) {
+        bestScore = score;
+        bestItem = item;
+      }
+    }
+  }
+
+  return bestItem;
+}
+
+/**
+ * Extrae múltiples entidades simultáneas de la frase: monto, horizonte, categoría,
+ * modalidad (contado / cuotas), tarjeta e ítem específico de Futuras Compras.
+ */
+export function extractQueryEntities(
+  rawText: string,
+  context: Pick<QueryContextData, 'accounts' | 'futurePurchases' | 'period'>
+): ExtractedQueryEntities {
+  const period = context.period || getCurrentPeriod();
+  const normalized = normalizeQueryText(rawText);
+  const tokens = normalized.split(' ').filter(Boolean);
+
+  const amount = extractAmountFromQuery(rawText);
+  const horizon = extractTargetHorizonFromQuery(rawText, period);
+
+  // 1. Modalidad de pago y número de cuotas
+  let paymentMode: 'cash' | 'installments' | null = null;
+  let installmentsCount: number | null = null;
+
+  const installmentsMatch = normalized.match(/\b(?:en\s+)?(\d{1,2})\s+cuotas?\b/);
+  if (installmentsMatch && installmentsMatch[1]) {
+    const parsed = parseInt(installmentsMatch[1], 10);
+    if (!isNaN(parsed) && parsed >= 1 && parsed <= 60) {
+      paymentMode = parsed === 1 ? 'cash' : 'installments';
+      installmentsCount = parsed;
+    }
+  } else if (
+    FINANZAI_KNOWLEDGE.entities.paymentModes.cash.some((term) => matchesTerm(normalized, term))
+  ) {
+    paymentMode = 'cash';
+    installmentsCount = 1;
+  } else if (
+    FINANZAI_KNOWLEDGE.entities.paymentModes.installments.some((term) => matchesTerm(normalized, term))
+  ) {
+    paymentMode = 'installments';
+  }
+
+  // 2. Marca y cuenta de tarjeta de crédito
+  let cardBrand: 'santander' | 'falabella' | 'other' | null = null;
+  let matchedCardId: string | null = null;
+  let matchedCardName: string | null = null;
+
+  const creditCards = (context.accounts || []).filter((a) => a.type === 'credit_card');
+  for (const card of creditCards) {
+    const cardNorm = normalizeQueryText(card.name);
+    const cardWords = cardNorm.split(' ').filter((w) => w.length >= 3);
+    if (
+      normalized.includes(cardNorm) ||
+      cardWords.some((cw) => tokens.some((qt) => qt === cw || (cw.length >= 5 && levenshteinDistance(qt, cw, 1) <= 1)))
+    ) {
+      matchedCardId = card.id;
+      matchedCardName = card.name;
+      break;
+    }
+  }
+
+  for (const [brand, aliases] of Object.entries(FINANZAI_KNOWLEDGE.entities.cardBrands) as [
+    'santander' | 'falabella' | 'other',
+    string[]
+  ][]) {
+    if (aliases.some((alias) => scoreTermMatch(normalized, tokens, alias) > 0)) {
+      cardBrand = brand;
+      if (!matchedCardId) {
+        const cardByBrand = creditCards.find((c) => {
+          const cn = normalizeQueryText(c.name);
+          if (c.card_brand === brand) return true;
+          return aliases.some((a) => cn.includes(a));
+        });
+        if (cardByBrand) {
+          matchedCardId = cardByBrand.id;
+          matchedCardName = cardByBrand.name;
+        }
+      }
+      break;
+    }
+  }
+
+  // 3. Categoría semántica (aliases, comercios e idiomas)
+  let category: string | null = null;
+  let matchedMerchantOrAlias: string | null = null;
+
+  for (const [catKey, catRule] of Object.entries(FINANZAI_KNOWLEDGE.entities.categories)) {
+    const merchantHit = catRule.merchants.find((m) => scoreTermMatch(normalized, tokens, m) > 0);
+    if (merchantHit) {
+      category = catKey;
+      matchedMerchantOrAlias = merchantHit;
+      break;
+    }
+    const aliasHit = catRule.aliases.find((a) => scoreTermMatch(normalized, tokens, a) > 0);
+    if (aliasHit) {
+      category = catKey;
+      matchedMerchantOrAlias = aliasHit;
+      break;
+    }
+  }
+
+  if (!category) {
+    for (const [idiom, rule] of Object.entries(FINANZAI_KNOWLEDGE.slangAndUnits.idioms)) {
+      if (rule.category && matchesTerm(normalized, idiom)) {
+        category = rule.category;
+        matchedMerchantOrAlias = idiom;
+        break;
+      }
+    }
+  }
+
+  // 4. Ítem específico de Futuras Compras
+  const matchedFuturePurchase = matchFuturePurchaseFromQuery(
+    normalized,
+    tokens,
+    context.futurePurchases
+  );
+
+  // 5. Título sugerido para Action Cards
+  let suggestedTitle: string | null = matchedFuturePurchase?.title || null;
+  if (!suggestedTitle && matchedMerchantOrAlias) {
+    suggestedTitle = capitalizeWords(matchedMerchantOrAlias);
+  }
+  if (!suggestedTitle) {
+    const objectMatch = normalized.match(
+      /(?:comprar|gastar(?:\s+en)?|pagar)\s+(?:un|una|unos|unas|el|la|los|las)?\s*([a-z0-9\s]{3,32})/
+    );
+    if (objectMatch && objectMatch[1]) {
+      const cleanedObj = objectMatch[1]
+        .replace(/\b(?:de|por|en|con|hoy|ahora)\b.*$/i, '')
+        .replace(/\d+(?:[.,]\d+)?\s*(?:lucas|palos|gambas|mil|k)?/gi, '')
+        .trim();
+      if (cleanedObj.length >= 3) {
+        suggestedTitle = capitalizeWords(cleanedObj);
+      }
+    }
+  }
+
+  return {
+    amount,
+    horizon,
+    category,
+    paymentMode,
+    installmentsCount,
+    cardBrand,
+    matchedCardId,
+    matchedCardName,
+    matchedFuturePurchase,
+    suggestedTitle,
+  };
+}
+
+interface ClassificationOutcome {
+  intent: QueryIntent;
+  isAmbiguous: boolean;
+  candidateIntents: QueryIntent[];
+}
+
+function classifyQueryIntentInternal(
+  normalized: string,
+  amount: number | null,
+  horizon: TargetHorizon | null
+): ClassificationOutcome {
+  const { intents, slangAndUnits } = FINANZAI_KNOWLEDGE;
+  const tokens = normalized.split(' ').filter(Boolean);
+
+  const scored: { intent: QueryIntent; score: number; priority: number; hadStrong: boolean }[] = [];
+
+  // Precalcular hints provenientes de modismos chilenos detectados
+  const idiomBoosts: Partial<Record<QueryIntent, number>> = {};
+  for (const [idiom, rule] of Object.entries(slangAndUnits.idioms)) {
+    if (matchesTerm(normalized, idiom) && rule.hintIntents) {
+      for (const hintIntent of rule.hintIntents) {
+        idiomBoosts[hintIntent] = (idiomBoosts[hintIntent] || 0) + 14;
+      }
+    }
+  }
+
+  for (const [rawIntent, rule] of Object.entries(intents) as [QueryIntent, IntentKnowledgeRule][]) {
+    if (!rule || rawIntent === 'greeting_help') continue;
+
+    // Si la intención exige monto presente y no hay monto, la omitimos
+    if (rule.requiresAmount && amount === null) continue;
+
+    const matchMode = rule.matchMode || 'includes';
+    let signalScore = 0;
+    let hadStrong = false;
+
+    for (const phrase of rule.strongPhrases) {
+      const factor = scoreTermMatch(normalized, tokens, phrase, matchMode);
+      if (factor > 0) {
+        signalScore += Math.round(42 * factor);
+        if (factor === 1) hadStrong = true;
+      }
+    }
+
+    for (const kw of rule.keywords) {
+      const factor = scoreTermMatch(normalized, tokens, kw, matchMode);
+      if (factor > 0) {
+        signalScore += Math.round(18 * factor);
+      }
+    }
+
+    signalScore += idiomBoosts[rawIntent] || 0;
+
+    // Si no hubo ninguna señal léxica ni idiomática, no aplicamos boosts de contexto solos
+    if (signalScore <= 0) continue;
+
+    if (rule.negativeKeywords) {
+      for (const neg of rule.negativeKeywords) {
+        if (matchesTerm(normalized, neg)) {
+          signalScore -= 45;
+        }
+      }
+    }
+
+    if (signalScore <= 0) continue;
+
+    if (horizon !== null && rule.requiresHorizonBoost) {
+      signalScore += rule.requiresHorizonBoost;
+    }
+
+    if (amount !== null && rule.requiresAmountBoost) {
+      signalScore += rule.requiresAmountBoost;
+    }
+
+    scored.push({
+      intent: rawIntent,
+      score: signalScore,
+      priority: rule.priority,
+      hadStrong,
+    });
+  }
+
+  scored.sort((a, b) => (b.score !== a.score ? b.score - a.score : b.priority - a.priority));
+
+  if (scored.length > 0) {
+    const top = scored[0];
+    const second = scored[1];
+    const isAmbiguous =
+      Boolean(second) &&
+      !top.hadStrong &&
+      top.score < 32 &&
+      top.score - second.score <= 6;
+
+    return {
+      intent: top.intent,
+      isAmbiguous,
+      candidateIntents: scored.slice(0, 2).map((s) => s.intent),
+    };
+  }
+
+  // Saludos, bienvenida y ayuda general (si no hubo otra intención financiera)
+  const greetingRule = intents.greeting_help;
+  if (greetingRule) {
+    const greetingMatched =
+      greetingRule.strongPhrases.some((kw) => matchesTerm(normalized, kw, 'includes')) ||
+      greetingRule.keywords.some((kw) => matchesTerm(normalized, kw, greetingRule.matchMode || 'boundary'));
+    if (greetingMatched) {
+      return { intent: 'greeting_help', isAmbiguous: false, candidateIntents: ['greeting_help'] };
+    }
+  }
+
+  // Solo ingresó un monto sin verbo rector (ej. "$60.000", "50 lucas", "2 palos")
+  const nonAmountText = normalized.replace(/\d+(?:[.,]\d+)?/g, '').trim();
+  const isMultiplierOnly = FINANZAI_KNOWLEDGE.slangAndUnits.multipliers.some((m) =>
+    m.tokens.includes(nonAmountText)
+  );
+  if (amount !== null && (nonAmountText.length <= 5 || isMultiplierOnly)) {
+    return { intent: 'amount_only', isAmbiguous: false, candidateIntents: ['amount_only'] };
+  }
+
+  // Fallback para consultas no reconocidas
+  return { intent: 'fallback', isAmbiguous: false, candidateIntents: [] };
+}
+
+/**
+ * Clasifica la intención de la consulta usando la base de conocimiento declarativa (finanzaiKnowledge.json)
+ * con scoring ponderado por frases fuertes, keywords, tolerancia a typos (Levenshtein), modismos y contexto.
  */
 export function classifyQueryIntent(
   normalized: string,
   amount: number | null,
   horizon: TargetHorizon | null
 ): QueryIntent {
-  // Saludos, bienvenida y ayuda general
-  const GREETING_KEYWORDS = [
-    'hola',
-    'buenas',
-    'buen dia',
-    'buenos dias',
-    'buenas tardes',
-    'buenas noches',
-    'hello',
-    'hi',
-    'hey',
-    'que haces',
-    'como funciona',
-    'ayuda',
-    'menu',
-    'comandos',
-    'quien eres',
-    'empezar',
-    'inicio',
-  ];
-  if (GREETING_KEYWORDS.some((kw) => normalized === kw || normalized.startsWith(kw + ' ') || normalized.endsWith(' ' + kw))) {
-    return 'greeting_help';
-  }
-
-  // 0. Evaluación de Lista de Deseos / Futuras Compras Posibles
-  const WISHLIST_KEYWORDS = [
-    'futuras compras',
-    'futura compra',
-    'compras futuras',
-    'lista de deseos',
-    'mis deseos',
-    'plan optimo para comprar',
-    'que de mis futuras compras',
-    'que puedo comprar de mi lista',
-    'proyectos de compra',
-    'wishlist',
-    'simulador de compras',
-  ];
-  if (WISHLIST_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'wishlist_evaluation';
-  }
-
-  // 1. Proyecciones Futuras de Ahorro en Meses Específicos (ej. "¿cuánto podré ahorrar en abril?", "cuánto ahorraré en 6 meses")
-  const FUTURE_SAVINGS_KEYWORDS = [
-    'cuanto podre ahorrar',
-    'cuanto podria ahorrar',
-    'cuanto ahorrare',
-    'cuanto voy a ahorrar',
-    'cuanto podre juntar',
-    'cuanto juntare',
-    'cuanto podre guardar',
-    'cuanto guardare',
-    'cuanto tendre ahorrado',
-    'proyeccion de ahorro',
-    'proyeccion para',
-    'ahorrar en',
-    'ahorro en',
-    'juntar en',
-  ];
-  if (
-    horizon !== null ||
-    FUTURE_SAVINGS_KEYWORDS.some((kw) => normalized.includes(kw))
-  ) {
-    // Si menciona un mes o un horizonte temporal y tiene intención de ahorro
-    if (
-      normalized.includes('ahorr') ||
-      normalized.includes('junt') ||
-      normalized.includes('guard') ||
-      normalized.includes('proyecc') ||
-      normalized.includes('tendre') ||
-      normalized.includes('podre') ||
-      normalized.includes('podria') ||
-      normalized.includes('meta')
-    ) {
-      if (amount !== null && (normalized.includes('cuando llegare') || normalized.includes('para llegar'))) {
-        return 'goal_target_reach';
-      }
-      return 'future_savings_projection';
-    }
-  }
-
-  // 2. Metas de ahorro / Horizonte para llegar a un monto (ej. "¿cuándo llegaré a 5 millones?")
-  const GOAL_KEYWORDS = [
-    'cuando llegare',
-    'cuando llego',
-    'cuando tendre',
-    'cuanto me falta para',
-    'en cuanto tiempo llego',
-    'para juntar',
-    'para llegar a',
-    'meta de ahorro',
-    'meta para',
-  ];
-  if (GOAL_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'goal_target_reach';
-  }
-
-  // 3. Sueldo, Ingresos y Flujo de Caja Libre
-  const INCOME_KEYWORDS = [
-    'cuanto gano',
-    'cual es mi sueldo',
-    'cuanto es mi sueldo',
-    'mis ingresos',
-    'ingresos totales',
-    'total de ingresos',
-    'cuanto me queda libre',
-    'flujo libre',
-    'flujo de caja',
-    'margen libre',
-    'superavit mensual',
-  ];
-  if (INCOME_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'income_cashflow';
-  }
-
-  // 4. Bono, Aguinaldo o Ingreso Extra (Windfall Engine)
-  const WINDFALL_KEYWORDS = [
-    'bono',
-    'aguinaldo',
-    'ingreso extra',
-    'plata extra',
-    'dinero extra',
-    'me llego un bono',
-    'recibo un bono',
-    'reparto de utilidades',
-    'devolucion de impuestos',
-  ];
-  if (WINDFALL_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'windfall_bonus';
-  }
-
-  // 5. Cupo y Detalles de Tarjeta de Crédito
-  const CARD_DETAILS_KEYWORDS = [
-    'cupo de mi tarjeta',
-    'cupo de la tarjeta',
-    'cupo disponible',
-    'cupo santander',
-    'cupo falabella',
-    'cupo cmr',
-    'limite de credito',
-    'cuando corta la tarjeta',
-    'fecha de corte',
-    'dia de corte',
-    'dia de facturacion',
-    'cuando factura la tarjeta',
-  ];
-  if (CARD_DETAILS_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'credit_card_details';
-  }
-
-  // 6. Deuda Total Consolidada
-  const TOTAL_DEBT_KEYWORDS = [
-    'cuanto debo en total',
-    'todas mis deudas',
-    'deuda total',
-    'total deudas',
-    'debo en total',
-    'sumando todo cuanto debo',
-    'mis creditos',
-  ];
-  if (TOTAL_DEBT_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'total_debt_audit';
-  }
-
-  // 7. Auditoría de Suscripciones
-  const SUBSCRIPTIONS_KEYWORDS = [
-    'cuanto gasto en suscripciones',
-    'que suscripciones tengo',
-    'mis suscripciones',
-    'suscripciones activas',
-    'netflix',
-    'spotify',
-    'apps mensuales',
-    'gastos en streaming',
-  ];
-  if (SUBSCRIPTIONS_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'subscriptions_audit';
-  }
-
-  // 8. Ahorro en Pareja / Cuentas Compartidas
-  const SHARED_SAVINGS_KEYWORDS = [
-    'ahorro en pareja',
-    'cuenta compartida',
-    'cuanto tenemos ahorrado',
-    'cuanto aporta mi pareja',
-    'cuanto ha puesto mi pareja',
-    'ahorro compartido',
-    'ahorros en pareja',
-  ];
-  if (SHARED_SAVINGS_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'shared_savings_partner';
-  }
-
-  // 9. Tarjeta vs Ahorro (Pre-pago de cuotas)
-  const CARD_VS_SAVINGS_KEYWORDS = [
-    'pagar tarjeta o ahorrar',
-    'pago la tarjeta o ahorro',
-    'conviene pagar la tarjeta',
-    'pagar cuotas o ahorrar',
-    'liquidar tarjeta',
-    'prepagar cuotas',
-    'intereses tarjeta',
-    'pagar el minimo',
-    'amortizar tarjeta',
-    'tarjeta o ahorro',
-  ];
-  if (CARD_VS_SAVINGS_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'card_vs_savings';
-  }
-
-  // 10. Dónde invertir o qué cuenta da más intereses
-  const INVEST_KEYWORDS = [
-    'donde invertir',
-    'en que cuenta invertir',
-    'en que cuenta me conviene',
-    'cual cuenta da mas interes',
-    'donde me conviene meter la plata',
-    'que cuenta da mas',
-    'mejor cuenta',
-    'donde ahorrar',
-    'invertir',
-    'inversion',
-    'rentabilidad',
-    'tasa de interes',
-    'tasa',
-    'dap',
-    'deposito a plazo',
-    'cuenta de ahorro',
-    'consorcio',
-    'banco estado',
-    'bancoestado',
-    'fintual',
-    'tenpo',
-    'rendimiento',
-  ];
-  if (INVEST_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'invest_recommendation';
-  }
-
-  // 11. Cuánto puedo ahorrar hoy / Ahorro seguro inmediato
-  const SAFE_TO_SAVE_KEYWORDS = [
-    'cuanto puedo ahorrar hoy',
-    'cuanto puedo ahorrar',
-    'cuanto me recomiendas ahorrar',
-    'cuanto guardo',
-    'meter al ahorro',
-    'pasar al ahorro',
-    'guardar en el ahorro',
-    'cuanto puedo transferir',
-    'ahorrar de mi saldo',
-    'ahorro seguro',
-    'dejar para fin de mes',
-    'cuanto apartar',
-  ];
-  if (SAFE_TO_SAVE_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'safe_to_save';
-  }
-
-  // 12. Simulación de Compra / Gasto Imprevisto ("What-If Spend")
-  const SPEND_KEYWORDS = [
-    'puedo gastar',
-    'me alcanza para',
-    'puedo comprar',
-    'comprar',
-    'gastar',
-    'gasto de',
-    'compra de',
-    'salir a',
-    'cena',
-    'asado',
-    'carrete',
-    'viaje',
-    'escapada',
-    'zapatillas',
-    'gustito',
-    'almuerzo',
-    'uber',
-    'descalzar',
-  ];
-  if (amount !== null && SPEND_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'what_if_spend';
-  }
-
-  // 13. Compromisos, facturación y pagos pendientes
-  const COMMITMENTS_KEYWORDS = [
-    'que cuentas me faltan pagar',
-    'que debo este mes',
-    'cuentas pendientes',
-    'gastos fijos pendientes',
-    'cuanto debo en la tarjeta',
-    'cuando vence la tarjeta',
-    'cuotas pendientes',
-    'deudas del mes',
-    'pagos obligatorios',
-    'cuentas por pagar',
-    'que me falta pagar',
-  ];
-  if (COMMITMENTS_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'pending_commitments';
-  }
-
-  // 14. Salud Financiera y Supervivencia
-  const SURVIVAL_KEYWORDS = [
-    'como voy',
-    'como van mis finanzas',
-    'como estan mis finanzas',
-    'llego a fin de mes',
-    'cuantos meses sobrevivo',
-    'fondo de emergencia',
-    'score de salud',
-    'tengo suficiente plata',
-    'estado financiero',
-    'resumen financiero',
-    'diagnostico',
-  ];
-  if (SURVIVAL_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'survival_health';
-  }
-
-  // 15. Auditoría de Categorías
-  const CATEGORY_KEYWORDS = [
-    'en que gaste mas',
-    'donde se fue la plata',
-    'en que se va el dinero',
-    'gasto en delivery',
-    'delivery vs supermercado',
-    'categoria principal',
-    'fuga de dinero',
-    'mis gastos variables',
-  ];
-  if (CATEGORY_KEYWORDS.some((kw) => normalized.includes(kw))) {
-    return 'category_audit';
-  }
-
-  // Solo ingresó un monto sin verbo rector (ej. "$60.000" o "50 lucas")
-  if (amount !== null && normalized.replace(/\d+/g, '').trim().length <= 5) {
-    return 'amount_only';
-  }
-
-  // Fallback para consultas no reconocidas
-  return 'fallback';
+  return classifyQueryIntentInternal(normalized, amount, horizon).intent;
 }
 
 /**
@@ -878,8 +1024,12 @@ export function solveIncomeCashflow(context: QueryContextData): QueryEngineResul
 /**
  * Responde el cupo disponible y fecha de corte de las tarjetas de crédito.
  */
-export function solveCreditCardDetails(context: QueryContextData): QueryEngineResult {
-  const { accounts } = context;
+export function solveCreditCardDetails(
+  context: QueryContextData,
+  entities?: ExtractedQueryEntities
+): QueryEngineResult {
+  const { accounts, recurringItems } = context;
+  const period = context.period || getCurrentPeriod();
   const creditCards = accounts.filter((a) => a.type === 'credit_card');
 
   if (creditCards.length === 0) {
@@ -891,27 +1041,48 @@ export function solveCreditCardDetails(context: QueryContextData): QueryEngineRe
       recommendation:
         'No registras tarjetas de crédito en FinanzApp. Puedes agregar tu tarjeta Santander o CMR Falabella desde la sección de tarjetas.',
       detailedBreakdown: [],
+      proposedActions: [
+        {
+          id: 'nav-cards-empty',
+          type: 'navigate_tab',
+          label: 'Ir a Tarjetas',
+          tone: 'blue',
+          payload: { tab: 'cards' },
+        },
+      ],
     };
   }
 
-  const breakdownLines = creditCards.map((c) => {
-    const limit = c.credit_limit || 0;
-    const used = c.current_balance || 0;
-    const available = Math.max(0, limit - used);
-    const cutStr = c.billing_day ? `Día ${c.billing_day} de cada mes` : 'No configurado';
-    return `• **${c.name}**: Cupo Total: ${formatCLP(limit)} | Usado: ${formatCLP(used)} | Disponible: ${formatCLP(available)} | Corte: ${cutStr}`;
+  const targetCards = entities?.matchedCardId
+    ? creditCards.filter((c) => c.id === entities.matchedCardId)
+    : creditCards;
+  const cardsToShow = targetCards.length > 0 ? targetCards : creditCards;
+
+  const metricsList = cardsToShow.map((c) => ({
+    card: c,
+    metrics: calculateCreditCardMetrics(c, recurringItems, period),
+  }));
+
+  const breakdownLines = metricsList.map(({ card, metrics }) => {
+    const cutStr = card.billing_day ? `Día ${card.billing_day} de cada mes` : 'No configurado';
+    return `• **${card.name}**: Cupo Total: ${formatCLP(metrics.creditLimit)} | Usado: ${formatCLP(metrics.usedAmount)} (${metrics.usagePercent}%) | Disponible: ${formatCLP(metrics.availableCredit)} | Corte: ${cutStr}`;
   });
 
-  const totalLimit = creditCards.reduce((sum, c) => sum + (c.credit_limit || 0), 0);
-  const totalUsed = creditCards.reduce((sum, c) => sum + (c.current_balance || 0), 0);
+  const totalLimit = metricsList.reduce((sum, m) => sum + m.metrics.creditLimit, 0);
+  const totalUsed = metricsList.reduce((sum, m) => sum + m.metrics.usedAmount, 0);
   const totalAvailable = Math.max(0, totalLimit - totalUsed);
+  const singleCard = cardsToShow.length === 1 ? cardsToShow[0] : null;
 
   return {
     intent: 'credit_card_details',
-    title: 'Cupos y Facturación de Tarjetas de Crédito',
-    verdict: `Cupo disponible total: ${formatCLP(totalAvailable)} de ${formatCLP(totalLimit)}`,
+    title: singleCard
+      ? `Cupo y Facturación · ${singleCard.name}`
+      : 'Cupos y Facturación de Tarjetas de Crédito',
+    verdict: `Cupo disponible${singleCard ? ` (${singleCard.name})` : ' total'}: ${formatCLP(totalAvailable)} de ${formatCLP(totalLimit)}`,
     verdictTone: totalUsed / (totalLimit || 1) > 0.5 ? 'amber' : 'emerald',
-    recommendation: `Tienes **${creditCards.length} tarjetas registradas** con un cupo total de **${formatCLP(totalLimit)}**. Actualmente tienes **${formatCLP(totalAvailable)} disponibles** y una deuda utilizada de ${formatCLP(totalUsed)}.`,
+    recommendation: singleCard
+      ? `Tu tarjeta **${singleCard.name}** tiene **${formatCLP(totalAvailable)} disponibles** de un cupo de **${formatCLP(totalLimit)}** (uso actual: ${formatCLP(totalUsed)}).`
+      : `Tienes **${creditCards.length} tarjetas registradas** con un cupo total de **${formatCLP(totalLimit)}**. Actualmente tienes **${formatCLP(totalAvailable)} disponibles** y un uso acumulado de ${formatCLP(totalUsed)}.`,
     detailedBreakdown: breakdownLines,
     metrics: [
       { label: 'Cupo Total', value: formatCLP(totalLimit), tone: 'neutral' },
@@ -921,6 +1092,17 @@ export function solveCreditCardDetails(context: QueryContextData): QueryEngineRe
     suggestedFollowUps: [
       '¿Me conviene pagar la tarjeta o ahorrar?',
       '¿Cuánto debo en total sumando todo?',
+    ],
+    actionLabel: 'Ver Tarjetas',
+    actionType: 'view_cards',
+    proposedActions: [
+      {
+        id: 'nav-cards',
+        type: 'navigate_tab',
+        label: singleCard ? `Abrir ${singleCard.name}` : 'Ir a Tarjetas',
+        tone: 'blue',
+        payload: { tab: 'cards' },
+      },
     ],
   };
 }
@@ -1370,6 +1552,16 @@ export function solveSafeToSave(
   };
 }
 
+function mapToFuturePurchaseCategory(
+  cat?: string | null
+): 'ropa' | 'accesorios' | 'tecnologia' | 'suscripcion' | 'hogar' | 'experiencias' | 'otros' {
+  if (!cat) return 'otros';
+  if (cat === 'entretenimiento' || cat === 'alimentacion') return 'experiencias';
+  if (cat === 'vivienda' || cat === 'servicios') return 'hogar';
+  if (cat === 'suscripciones') return 'suscripcion';
+  return 'otros';
+}
+
 export function solveWhatIfSpend(
   amount: number,
   accounts: Account[],
@@ -1377,7 +1569,8 @@ export function solveWhatIfSpend(
   period: string,
   dailyBudgetSuggested: number,
   payments?: MonthlyPayment[],
-  variableExpenses?: VariableExpense[]
+  variableExpenses?: VariableExpense[],
+  entities?: ExtractedQueryEntities
 ): QueryEngineResult {
   const checkingBalance = getCheckingLiquidBalance(accounts, variableExpenses, period);
   const pendingFixed = getPendingFixedExpenses(recurringItems, period, payments);
@@ -1386,52 +1579,131 @@ export function solveWhatIfSpend(
   const currentAvailableMargin = checkingBalance - pendingFixed;
   const currentDailyBudget = Math.max(0, Math.round(currentAvailableMargin / remainingDays));
 
-  const newAvailableMargin = currentAvailableMargin - amount;
+  const isInstallments = entities?.paymentMode === 'installments';
+  const installmentsCount = isInstallments ? Math.max(2, entities?.installmentsCount || 3) : 1;
+  const effectiveMonthlyImpact = isInstallments ? Math.round(amount / installmentsCount) : amount;
+
+  const newAvailableMargin = currentAvailableMargin - effectiveMonthlyImpact;
   const newDailyBudget = Math.max(0, Math.round(newAvailableMargin / remainingDays));
 
   const formattedSpend = formatCLP(amount);
+  const formattedMonthly = formatCLP(effectiveMonthlyImpact);
+  const itemTitle = entities?.suggestedTitle || 'Gasto desde FinanzAI';
+  const itemCategory = entities?.category || 'general';
+  const primaryChecking = accounts.find((a) => a.type === 'checking');
 
-  if (newAvailableMargin < 0) {
-    const deficit = Math.abs(newAvailableMargin);
+  // Si se mencionó tarjeta o cuotas, verificar cupo disponible en la tarjeta correspondiente
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+  const selectedCard =
+    (entities?.matchedCardId
+      ? creditCards.find((c) => c.id === entities.matchedCardId)
+      : undefined) || creditCards[0];
+
+  const cardMetrics = selectedCard
+    ? calculateCreditCardMetrics(selectedCard, recurringItems, period)
+    : null;
+  const lacksCardQuota =
+    isInstallments && cardMetrics !== null && cardMetrics.availableCredit < amount;
+
+  const saveFutureAction: ProposedChatAction = {
+    id: `save-fp-${amount}-${installmentsCount}`,
+    type: 'save_future_purchase',
+    label: `Guardar en Futuras Compras (${formattedSpend})`,
+    description: isInstallments
+      ? `Planificar "${itemTitle}" en ${installmentsCount} cuotas de ${formattedMonthly}/mes.`
+      : `Añadir "${itemTitle}" a Compras Futuras para evaluar su momento óptimo.`,
+    confirmLabel: 'Confirmar y guardar',
+    tone: 'blue',
+    payload: {
+      title: itemTitle,
+      amount,
+      category: mapToFuturePurchaseCategory(itemCategory),
+      payment_mode: isInstallments ? 'installments' : 'one_time_cash',
+      installments_count: installmentsCount,
+      target_account_id: isInstallments ? selectedCard?.id || null : primaryChecking?.id || null,
+    },
+  };
+
+  const registerExpenseAction: ProposedChatAction = {
+    id: `reg-var-${amount}`,
+    type: 'register_variable_expense',
+    label: `Registrar gasto de ${formattedSpend}`,
+    description: `Descuenta ${formattedSpend} como "${itemTitle}" (${itemCategory})${
+      primaryChecking ? ` en ${primaryChecking.name}` : ''
+    }.`,
+    confirmLabel: 'Confirmar registro',
+    tone: 'emerald',
+    payload: {
+      title: itemTitle,
+      amount,
+      category: itemCategory,
+      account_id: primaryChecking?.id || null,
+      period,
+    },
+  };
+
+  if (newAvailableMargin < 0 || lacksCardQuota) {
+    const deficit = lacksCardQuota && cardMetrics
+      ? Math.max(0, amount - cardMetrics.availableCredit)
+      : Math.abs(newAvailableMargin);
+
     return {
       intent: 'what_if_spend',
-      title: 'Simulación What-If: Gasto Imprevisto',
-      verdict: `⚠️ Alerta: Este gasto de ${formattedSpend} provocaría déficit`,
+      title: isInstallments
+        ? `Simulación en ${installmentsCount} Cuotas${selectedCard ? ` · ${selectedCard.name}` : ''}`
+        : 'Simulación What-If: Gasto Imprevisto',
+      verdict: lacksCardQuota
+        ? `⚠️ Cupo insuficiente en ${selectedCard?.name} para ${formattedSpend}`
+        : `⚠️ Alerta: Este ${isInstallments ? `compromiso de ${formattedMonthly}/mes` : `gasto de ${formattedSpend}`} provocaría déficit`,
       verdictTone: 'coral',
-      recommendation: `**No te recomendamos realizar este gasto de ${formattedSpend}**. Supera tu liquidez disponible después de descontar tus gastos fijos obligatorios, dejándote con un descubierto estimado de ${formatCLP(deficit)}.`,
+      recommendation: lacksCardQuota && cardMetrics
+        ? `**No te recomendamos esta compra de ${formattedSpend} con ${selectedCard?.name}**. Tu cupo disponible actual es de **${formatCLP(cardMetrics.availableCredit)}**, faltándote **${formatCLP(deficit)}** de cupo.`
+        : `**No te recomendamos realizar este gasto${isInstallments ? ` en ${installmentsCount} cuotas (${formattedMonthly}/mes)` : ` de ${formattedSpend}`}**. Supera tu liquidez disponible después de descontar tus gastos fijos obligatorios, dejándote con un déficit estimado de ${formatCLP(deficit)}.`,
       detailedBreakdown: [
         `• Saldo en cuenta corriente: ${formatCLP(checkingBalance)}.`,
         `• Gastos fijos pendientes por pagar: -${formatCLP(pendingFixed)}.`,
         `• Margen libre actual antes del gasto: ${formatCLP(currentAvailableMargin)}.`,
-        `• Monto del gasto simulado: -${formattedSpend}.`,
-        `• Nuevo presupuesto diario: $0/día (descalce total para los ${remainingDays} días restantes).`,
+        isInstallments
+          ? `• Impacto mensual (${installmentsCount} cuotas): -${formattedMonthly}/mes (Total: ${formattedSpend}).`
+          : `• Monto del gasto simulado: -${formattedSpend}.`,
+        ...(cardMetrics
+          ? [`• Cupo disponible en ${selectedCard?.name}: ${formatCLP(cardMetrics.availableCredit)}.`]
+          : []),
       ],
       metrics: [
-        { label: 'Gasto Simulado', value: formattedSpend, tone: 'coral' },
-        { label: 'Nuevo Presupuesto', value: '$0 / día', tone: 'coral' },
-        { label: 'Déficit Proyectado', value: formatCLP(deficit), tone: 'coral' },
+        { label: isInstallments ? `Cuota (${installmentsCount}x)` : 'Gasto Simulado', value: isInstallments ? formattedMonthly : formattedSpend, tone: 'coral' },
+        { label: 'Nuevo Presupuesto', value: `${formatCLP(newDailyBudget)} / día`, tone: 'coral' },
+        { label: lacksCardQuota ? 'Cupo Faltante' : 'Déficit Proyectado', value: formatCLP(deficit), tone: 'coral' },
       ],
       suggestedFollowUps: [
         '¿Qué cuentas me faltan pagar este mes?',
         '¿Cuánto puedo ahorrar hoy de mi saldo?',
       ],
+      proposedActions: [saveFutureAction],
     };
   }
 
   if (newDailyBudget < 8000) {
     return {
       intent: 'what_if_spend',
-      title: 'Simulación What-If: Gasto Imprevisto',
+      title: isInstallments
+        ? `Simulación en ${installmentsCount} Cuotas${selectedCard ? ` · ${selectedCard.name}` : ''}`
+        : 'Simulación What-If: Gasto Imprevisto',
       verdict: `Precaución: Tu ritmo diario bajará a ${formatCLP(newDailyBudget)}/día`,
       verdictTone: 'amber',
-      recommendation: `El gasto de **${formattedSpend}** es viable, pero dejará tu presupuesto diario muy ajustado para los ${remainingDays} días restantes del mes. Deberás controlar estrictamente los micro-gastos cotidianos.`,
+      recommendation: `La compra "${itemTitle}" por **${formattedSpend}**${
+        isInstallments ? ` en **${installmentsCount} cuotas de ${formattedMonthly}/mes**` : ''
+      } es viable, pero dejará tu presupuesto diario muy ajustado para los ${remainingDays} días restantes del mes.`,
       detailedBreakdown: [
         `• Presupuesto diario actual: ${formatCLP(currentDailyBudget)}/día.`,
-        `• Presupuesto diario posterior al gasto: ${formatCLP(newDailyBudget)}/día (${remainingDays} días restantes).`,
-        `• Saldo remanente protegido para gastos fijos: ${formatCLP(pendingFixed)}.`,
+        `• Impacto mensual evaluado: ${formattedMonthly}.`,
+        `• Presupuesto diario posterior: ${formatCLP(newDailyBudget)}/día (${remainingDays} días restantes).`,
+        ...(cardMetrics && isInstallments
+          ? [`• Cupo restante en ${selectedCard?.name} tras la compra: ${formatCLP(cardMetrics.availableCredit - amount)}.`]
+          : []),
       ],
       metrics: [
-        { label: 'Gasto Simulado', value: formattedSpend, tone: 'amber' },
+        { label: isInstallments ? `Cuota (${installmentsCount}x)` : 'Gasto Simulado', value: isInstallments ? formattedMonthly : formattedSpend, tone: 'amber' },
         { label: 'Ritmo Anterior', value: `${formatCLP(currentDailyBudget)}/d`, tone: 'neutral' },
         { label: 'Nuevo Ritmo', value: `${formatCLP(newDailyBudget)}/d`, tone: 'amber' },
       ],
@@ -1439,26 +1711,45 @@ export function solveWhatIfSpend(
         '¿Cuánto puedo ahorrar hoy de mi saldo?',
         '¿En qué categoría se fue más dinero este mes?',
       ],
+      proposedActions: isInstallments
+        ? [saveFutureAction]
+        : [registerExpenseAction, saveFutureAction],
     };
   }
 
   return {
     intent: 'what_if_spend',
-    title: 'Simulación What-If: Gasto Imprevisto',
-    verdict: `✅ Gasto Aprobado: Mantienes ${formatCLP(newDailyBudget)}/día`,
+    title: isInstallments
+      ? `Simulación en ${installmentsCount} Cuotas${selectedCard ? ` · ${selectedCard.name}` : ''}`
+      : 'Simulación What-If: Gasto Imprevisto',
+    verdict: `✅ ${isInstallments ? 'Cuotas Viables' : 'Gasto Aprobado'}: Mantienes ${formatCLP(newDailyBudget)}/día`,
     verdictTone: 'emerald',
-    recommendation: `**Puedes realizar este gasto de ${formattedSpend} con total tranquilidad**. Tu presupuesto diario remanente de **${formatCLP(newDailyBudget)}/día** se mantiene en zona verde y todas tus cuentas de fin de mes quedan 100% cubiertas.`,
+    recommendation: isInstallments
+      ? `**Puedes financiar "${itemTitle}" (${formattedSpend}) en ${installmentsCount} cuotas de ${formattedMonthly}/mes**${
+          selectedCard ? ` con **${selectedCard.name}**` : ''
+        }. Tu presupuesto diario queda en **${formatCLP(newDailyBudget)}/día** sin descalzar tus gastos fijos.`
+      : `**Puedes realizar este gasto de ${formattedSpend} (${itemTitle}) con total tranquilidad**. Tu presupuesto diario remanente de **${formatCLP(newDailyBudget)}/día** se mantiene en zona verde y todas tus cuentas de fin de mes quedan 100% cubiertas.`,
     detailedBreakdown: [
       `• Saldo actual en cuenta corriente: ${formatCLP(checkingBalance)}.`,
       `• Gastos fijos protegidos: ${formatCLP(pendingFixed)}.`,
-      `• Margen libre remanente tras la compra: ${formatCLP(newAvailableMargin)}.`,
+      isInstallments
+        ? `• Cuota mensual simulada (${installmentsCount}x): -${formattedMonthly}/mes (Total: ${formattedSpend}).`
+        : `• Monto al contado: -${formattedSpend}.`,
+      ...(cardMetrics && isInstallments
+        ? [`• Cupo en ${selectedCard?.name}: ${formatCLP(cardMetrics.availableCredit)} disponible → ${formatCLP(cardMetrics.availableCredit - amount)} post-compra.`]
+        : []),
       `• Presupuesto diario holgado resultante: ${formatCLP(newDailyBudget)}/día por los próximos ${remainingDays} días.`,
     ],
     metrics: [
-      { label: 'Gasto Simulado', value: formattedSpend, tone: 'emerald' },
+      { label: isInstallments ? `Cuota (${installmentsCount}x)` : 'Gasto Simulado', value: isInstallments ? formattedMonthly : formattedSpend, tone: 'emerald' },
       { label: 'Nuevo Diario', value: `${formatCLP(newDailyBudget)}/d`, tone: 'emerald' },
       { label: 'Días Restantes', value: `${remainingDays} días`, tone: 'neutral' },
     ],
+    proposedActions: isInstallments
+      ? [saveFutureAction]
+      : amount >= 15000
+      ? [registerExpenseAction, saveFutureAction]
+      : [registerExpenseAction],
   };
 }
 
@@ -1566,6 +1857,30 @@ export function solvePendingCommitments(
     breakdownLines.push(`• Facturación / Saldo en Tarjetas de Crédito: ${formatCLP(cardsTotal)}.`);
   }
 
+  const pendingActions: ProposedChatAction[] = pendingItems.slice(0, 3).map((item) => ({
+    id: `pay-rec-${item.id}`,
+    type: 'mark_recurring_paid',
+    label: `Marcar pagado: ${item.title} (${formatCLP(item.amount)})`,
+    description: `Registra "${item.title}" como PAGADO en el período ${period}.`,
+    confirmLabel: 'Confirmar pago',
+    tone: 'emerald',
+    payload: {
+      target_type: 'recurring_item',
+      target_id: item.id,
+      period,
+      title: item.title,
+      amount: item.amount,
+    },
+  }));
+
+  pendingActions.push({
+    id: 'nav-fixed',
+    type: 'navigate_tab',
+    label: 'Ver Gastos Fijos',
+    tone: 'blue',
+    payload: { tab: 'fixed' },
+  });
+
   return {
     intent: 'pending_commitments',
     title: 'Radar de Cuentas y Cuotas por Pagar',
@@ -1580,6 +1895,7 @@ export function solvePendingCommitments(
     ],
     actionLabel: 'Ver Gastos Fijos',
     actionType: 'view_fixed',
+    proposedActions: pendingActions,
   };
 }
 
@@ -1667,7 +1983,8 @@ export function solveAmountOnly(amount: number): QueryEngineResult {
 }
 
 export function solveWishlistEvaluation(
-  context: QueryContextData
+  context: QueryContextData,
+  entities?: ExtractedQueryEntities
 ): QueryEngineResult {
   const {
     accounts,
@@ -1694,6 +2011,83 @@ export function solveWishlistEvaluation(
       suggestedFollowUps: [
         '¿Cuánto puedo ahorrar hoy de mi saldo?',
         '¿Cuál es mi sueldo y cuánto me queda libre?',
+      ],
+      proposedActions: [
+        {
+          id: 'nav-fp-empty',
+          type: 'navigate_tab',
+          label: 'Ir a Compras Futuras',
+          tone: 'blue',
+          payload: { tab: 'future_purchases' },
+        },
+      ],
+    };
+  }
+
+  // Si se detectó un ítem específico de Futuras Compras en la pregunta del usuario
+  if (entities?.matchedFuturePurchase) {
+    const targetItem = entities.matchedFuturePurchase;
+    const overridePaymentMode =
+      entities.paymentMode === 'installments'
+        ? 'installments'
+        : entities.paymentMode === 'cash'
+        ? 'one_time_cash'
+        : undefined;
+    const overrideInstallments = entities.installmentsCount || undefined;
+
+    const itemEval = evaluateFuturePurchase(
+      targetItem,
+      { period, accounts, recurringItems, variableExpenses, payments },
+      overrideInstallments,
+      overridePaymentMode
+    );
+
+    const tone: 'emerald' | 'amber' | 'coral' =
+      itemEval.verdict === 'viable_today'
+        ? 'emerald'
+        : itemEval.verdict === 'viable_planned'
+        ? 'amber'
+        : 'coral';
+
+    return {
+      intent: 'wishlist_evaluation',
+      title: `Evaluación · ${targetItem.title}`,
+      verdict: `${itemEval.verdictBadge}: ${itemEval.verdictHeadline}`,
+      verdictTone: tone,
+      recommendation: itemEval.verdictExplanation,
+      detailedBreakdown: [
+        `• Camino Contado Hoy: ${
+          itemEval.cashPath.isViableToday ? 'Viable' : 'Ajustado / No viable'
+        } (Safe-to-Spend resultante: ${formatCLP(itemEval.cashPath.resultingSafePerDay)}/día).`,
+        `• Camino ${itemEval.installmentsPath.installmentsCount} Cuotas (${itemEval.installmentsPath.cardName}): ${formatCLP(
+          itemEval.installmentsPath.monthlyInstallment
+        )}/mes · ${itemEval.installmentsPath.billingAdvice}`,
+      ],
+      metrics: [
+        { label: 'Precio Ítem', value: formatCLP(targetItem.amount), tone: 'neutral' },
+        {
+          label: 'Contado Diario',
+          value: `${formatCLP(itemEval.cashPath.resultingSafePerDay)}/d`,
+          tone: itemEval.cashPath.isViableToday ? 'emerald' : 'amber',
+        },
+        {
+          label: `Cuota (${itemEval.installmentsPath.installmentsCount}x)`,
+          value: formatCLP(itemEval.installmentsPath.monthlyInstallment),
+          tone: itemEval.installmentsPath.isViableInInstallments ? 'emerald' : 'coral',
+        },
+      ],
+      suggestedFollowUps: [
+        `¿Puedo comprar ${targetItem.title} en 6 cuotas?`,
+        '¿Cuál es mi plan óptimo para comprar mi lista de deseos?',
+      ],
+      proposedActions: [
+        {
+          id: `nav-fp-${targetItem.id}`,
+          type: 'navigate_tab',
+          label: 'Abrir en Compras Futuras',
+          tone: 'blue',
+          payload: { tab: 'future_purchases' },
+        },
       ],
     };
   }
@@ -1806,6 +2200,74 @@ export function solveWishlistEvaluation(
       '¿Cuál es el cupo de mis tarjetas de crédito?',
       '¿Cuánto gasto en suscripciones mensuales?',
     ],
+    proposedActions: [
+      {
+        id: 'nav-fp-list',
+        type: 'navigate_tab',
+        label: 'Abrir Compras Futuras',
+        tone: 'blue',
+        payload: { tab: 'future_purchases' },
+      },
+    ],
+  };
+}
+
+const INTENT_CLARIFICATION_PROMPT: Partial<Record<QueryIntent, string>> = {
+  credit_card_details: '¿Cuál es el cupo disponible de mis tarjetas?',
+  card_vs_savings: '¿Me conviene pagar la tarjeta o ahorrar?',
+  pending_commitments: '¿Qué cuentas me faltan pagar este mes?',
+  future_savings_projection: '¿Cuánto podré ahorrar en abril?',
+  safe_to_save: '¿Cuánto puedo ahorrar hoy de mi saldo?',
+  what_if_spend: '¿Puedo gastar $50.000 hoy?',
+  category_audit: '¿En qué categoría se fue más dinero este mes?',
+  subscriptions_audit: '¿Cuánto gasto en suscripciones mensuales?',
+  wishlist_evaluation: '¿Qué de mis futuras compras puedo comprar hoy?',
+  survival_health: '¿Cómo va mi salud financiera?',
+};
+
+export function solveClarification(
+  entities: ExtractedQueryEntities,
+  candidateIntents: QueryIntent[]
+): QueryEngineResult {
+  const suggestions = candidateIntents
+    .map((i) => INTENT_CLARIFICATION_PROMPT[i])
+    .filter((q): q is string => Boolean(q));
+
+  if (entities.amount !== null && suggestions.length < 3) {
+    const formatted = formatCLP(entities.amount);
+    suggestions.unshift(`¿Puedo gastar ${formatted} hoy?`);
+    if (entities.installmentsCount) {
+      suggestions.unshift(`¿Puedo gastar ${formatted} en ${entities.installmentsCount} cuotas?`);
+    }
+  }
+
+  const detectedParts: string[] = [];
+  if (entities.amount !== null) detectedParts.push(`monto ${formatCLP(entities.amount)}`);
+  if (entities.category) detectedParts.push(`categoría ${entities.category}`);
+  if (entities.matchedCardName || entities.cardBrand) {
+    detectedParts.push(`tarjeta ${entities.matchedCardName || entities.cardBrand}`);
+  }
+  if (entities.horizon) detectedParts.push(`horizonte ${entities.horizon.targetLabel}`);
+
+  return {
+    intent: 'fallback',
+    title: 'Necesito una pequeña aclaración',
+    verdict:
+      detectedParts.length > 0
+        ? `Detecté ${detectedParts.join(', ')}: ¿qué deseas calcular?`
+        : 'Tu consulta es un poco ambigua',
+    verdictTone: 'blue',
+    recommendation:
+      'Para darte cifras 100% exactas sin adivinar tu intención, elige una de las interpretaciones sugeridas abajo o agrega un verbo claro (ej. *gastar*, *ahorrar*, *pagar*, *cupo*).',
+    detailedBreakdown: suggestions.map((s) => `• ${s}`),
+    suggestedFollowUps:
+      suggestions.length > 0
+        ? suggestions.slice(0, 3)
+        : [
+            '¿Cuánto puedo ahorrar hoy de mi saldo?',
+            '¿Qué cuentas me faltan pagar este mes?',
+            '¿Cuál es el cupo de mis tarjetas de crédito?',
+          ],
   };
 }
 
@@ -1833,20 +2295,241 @@ export function solveFallback(): QueryEngineResult {
   };
 }
 
+function resolveCardFromBrand(
+  brand: 'santander' | 'falabella' | 'other',
+  accounts: Account[]
+): { id: string | null; name: string | null } {
+  const creditCards = accounts.filter((a) => a.type === 'credit_card');
+  const aliases = FINANZAI_KNOWLEDGE.entities.cardBrands[brand] || [];
+  const matched = creditCards.find((c) => {
+    if (c.card_brand === brand) return true;
+    const cn = normalizeQueryText(c.name);
+    return aliases.some((a) => cn.includes(a));
+  });
+  return matched ? { id: matched.id, name: matched.name } : { id: null, name: null };
+}
+
+function applyFollowUpWithSlots(
+  normalized: string,
+  entities: ExtractedQueryEntities,
+  outcome: ClassificationOutcome,
+  context: QueryContextData,
+  slots?: ConversationSlots
+): {
+  intent: QueryIntent;
+  entities: ExtractedQueryEntities;
+  inheritedFromSlots: boolean;
+} {
+  if (!slots?.lastIntent) {
+    return { intent: outcome.intent, entities, inheritedFromSlots: false };
+  }
+
+  let nextEntities = { ...entities };
+  let inheritedIntent: QueryIntent | null = null;
+  const isShortAnaphora =
+    normalized.startsWith('y ') ||
+    outcome.intent === 'fallback' ||
+    outcome.isAmbiguous ||
+    (outcome.intent === 'credit_card_details' &&
+      (slots.lastIntent === 'what_if_spend' || slots.lastIntent === 'wishlist_evaluation') &&
+      normalized.startsWith('y '));
+
+  // 1. Evaluar patrones anafóricos de finanzaiKnowledge.json
+  for (const rule of FINANZAI_KNOWLEDGE.followUpPatterns) {
+    const regex = new RegExp(rule.pattern, 'i');
+    const match = normalized.match(regex);
+    if (!match) continue;
+    if (!rule.inheritIntentIfMissing.includes(slots.lastIntent)) continue;
+
+    // Si es una frase corta anafórica o el clasificador no detectó una intención más fuerte ajena
+    const canInherit =
+      isShortAnaphora ||
+      outcome.intent === slots.lastIntent ||
+      (outcome.intent === 'credit_card_details' && slots.lastIntent === 'what_if_spend');
+
+    if (!canInherit) continue;
+
+    inheritedIntent = slots.lastIntent;
+
+    const { updates } = rule;
+    if (updates.paymentMode === 'cash' || updates.paymentMode === 'installments') {
+      nextEntities.paymentMode = updates.paymentMode;
+    }
+    if (updates.installments !== undefined) {
+      const rawInst =
+        typeof updates.installments === 'string' && updates.installments.startsWith('$')
+          ? match[parseInt(updates.installments.slice(1), 10)]
+          : String(updates.installments);
+      const parsedInst = parseInt(rawInst, 10);
+      if (!isNaN(parsedInst) && parsedInst >= 1 && parsedInst <= 60) {
+        nextEntities.installmentsCount = parsedInst;
+      }
+    }
+    if (updates.cardBrand !== undefined) {
+      const rawBrand =
+        typeof updates.cardBrand === 'string' && updates.cardBrand.startsWith('$')
+          ? (match[parseInt(updates.cardBrand.slice(1), 10)] || '').toLowerCase()
+          : String(updates.cardBrand).toLowerCase();
+      const mappedBrand: 'santander' | 'falabella' | 'other' =
+        rawBrand === 'cmr' || rawBrand === 'falabella'
+          ? 'falabella'
+          : rawBrand === 'santander'
+          ? 'santander'
+          : 'other';
+      nextEntities.cardBrand = mappedBrand;
+      const resolvedCard = resolveCardFromBrand(mappedBrand, context.accounts || []);
+      nextEntities.matchedCardId = resolvedCard.id;
+      nextEntities.matchedCardName = resolvedCard.name;
+    }
+    if (typeof updates.amountMultiplier === 'number' && slots.lastAmount) {
+      nextEntities.amount = Math.round(slots.lastAmount * updates.amountMultiplier);
+    }
+  }
+
+  // 2. Follow-ups temporales sobre proyección de ahorro ("¿y en diciembre?", "¿y el próximo mes?")
+  if (
+    !inheritedIntent &&
+    slots.lastIntent === 'future_savings_projection' &&
+    nextEntities.horizon !== null &&
+    isShortAnaphora
+  ) {
+    inheritedIntent = 'future_savings_projection';
+  }
+
+  // 3. Follow-up de monto sobre simulación previa ("¿y si cuesta 200 lucas?")
+  if (
+    !inheritedIntent &&
+    normalized.startsWith('y ') &&
+    nextEntities.amount !== null &&
+    (slots.lastIntent === 'what_if_spend' ||
+      slots.lastIntent === 'goal_target_reach' ||
+      slots.lastIntent === 'windfall_bonus') &&
+    (outcome.intent === 'fallback' || outcome.intent === 'amount_only' || outcome.isAmbiguous)
+  ) {
+    inheritedIntent = slots.lastIntent;
+  }
+
+  if (!inheritedIntent) {
+    return { intent: outcome.intent, entities: nextEntities, inheritedFromSlots: false };
+  }
+
+  // Heredar slots previos que no fueron sobreescritos en este turno
+  if (nextEntities.amount === null && slots.lastAmount != null) {
+    nextEntities.amount = slots.lastAmount;
+  }
+  if (!nextEntities.suggestedTitle && slots.lastItemName) {
+    nextEntities.suggestedTitle = slots.lastItemName;
+  }
+  if (!nextEntities.category && slots.lastCategory) {
+    nextEntities.category = slots.lastCategory;
+  }
+  if (!nextEntities.cardBrand && slots.lastCardBrand) {
+    nextEntities.cardBrand = slots.lastCardBrand;
+  }
+  if (!nextEntities.matchedCardId && slots.lastCardId) {
+    nextEntities.matchedCardId = slots.lastCardId;
+    const prevCard = (context.accounts || []).find((a) => a.id === slots.lastCardId);
+    if (prevCard) nextEntities.matchedCardName = prevCard.name;
+  }
+  if (!nextEntities.paymentMode && slots.lastPaymentMode) {
+    nextEntities.paymentMode = slots.lastPaymentMode;
+  }
+  if (nextEntities.installmentsCount === null && slots.lastInstallments != null && nextEntities.paymentMode === 'installments') {
+    nextEntities.installmentsCount = slots.lastInstallments;
+  }
+  if (!nextEntities.matchedFuturePurchase && slots.lastFuturePurchaseId) {
+    const prevFp = (context.futurePurchases || []).find(
+      (fp) => fp.id === slots.lastFuturePurchaseId && fp.status !== 'purchased'
+    );
+    if (prevFp) {
+      nextEntities.matchedFuturePurchase = prevFp;
+    }
+  }
+
+  return {
+    intent: inheritedIntent,
+    entities: nextEntities,
+    inheritedFromSlots: true,
+  };
+}
+
+function buildUpdatedSlots(
+  resultIntent: QueryIntent,
+  entities: ExtractedQueryEntities,
+  prevSlots?: ConversationSlots
+): ConversationSlots {
+  if (resultIntent === 'fallback' || resultIntent === 'greeting_help') {
+    return prevSlots ? { ...prevSlots } : {};
+  }
+
+  return {
+    lastIntent: resultIntent,
+    lastAmount: entities.matchedFuturePurchase?.amount ?? entities.amount ?? prevSlots?.lastAmount ?? null,
+    lastHorizon: entities.horizon ?? prevSlots?.lastHorizon ?? null,
+    lastItemName: entities.suggestedTitle ?? prevSlots?.lastItemName ?? null,
+    lastCardId: entities.matchedCardId ?? prevSlots?.lastCardId ?? null,
+    lastCardBrand: entities.cardBrand ?? prevSlots?.lastCardBrand ?? null,
+    lastPaymentMode: entities.paymentMode ?? prevSlots?.lastPaymentMode ?? null,
+    lastInstallments:
+      entities.paymentMode === 'cash'
+        ? 1
+        : entities.installmentsCount ?? prevSlots?.lastInstallments ?? null,
+    lastCategory: entities.category ?? prevSlots?.lastCategory ?? null,
+    lastFuturePurchaseId:
+      resultIntent === 'wishlist_evaluation'
+        ? entities.matchedFuturePurchase?.id ?? prevSlots?.lastFuturePurchaseId ?? null
+        : null,
+  };
+}
+
 /**
  * Función principal que procesa cualquier texto de entrada libre o píldora de 1 toque.
+ * Soporta memoria conversacional opcional (`slots`) para resolver preguntas de seguimiento.
  */
 export function queryFinanzAI(
   query: string,
-  context: QueryContextData
+  context: QueryContextData,
+  slots?: ConversationSlots
 ): QueryEngineResult {
   const { accounts, recurringItems, variableExpenses, payments } = context;
   const period = context.period || getCurrentPeriod();
 
   const normalized = normalizeQueryText(query);
-  const extractedAmount = extractAmountFromQuery(query);
-  const targetHorizon = extractTargetHorizonFromQuery(query, period);
-  const intent = classifyQueryIntent(normalized, extractedAmount, targetHorizon);
+  const rawEntities = extractQueryEntities(query, {
+    accounts,
+    futurePurchases: context.futurePurchases,
+    period,
+  });
+
+  const outcome = classifyQueryIntentInternal(normalized, rawEntities.amount, rawEntities.horizon);
+  const followUpResolution = applyFollowUpWithSlots(
+    normalized,
+    rawEntities,
+    outcome,
+    context,
+    slots
+  );
+
+  const entities = followUpResolution.entities;
+  let resolvedIntent = followUpResolution.intent;
+
+  // Enrutamiento inteligente por entidades cuando la frase apunta a un ítem o entidad específica
+  if (
+    !followUpResolution.inheritedFromSlots &&
+    entities.matchedFuturePurchase &&
+    (resolvedIntent === 'what_if_spend' ||
+      resolvedIntent === 'fallback' ||
+      outcome.isAmbiguous ||
+      /\b(?:comprar|conviene|adquirir|cuotas?|contado)\b/.test(normalized))
+  ) {
+    resolvedIntent = 'wishlist_evaluation';
+  } else if (resolvedIntent === 'fallback') {
+    if (entities.matchedCardId || entities.cardBrand) {
+      resolvedIntent = entities.amount !== null ? 'what_if_spend' : 'credit_card_details';
+    } else if (entities.category && entities.amount === null) {
+      resolvedIntent = 'category_audit';
+    }
+  }
 
   // Calcular presupuesto diario actual
   const checkingBalance = getCheckingLiquidBalance(accounts, context.variableExpenses, period);
@@ -1854,45 +2537,72 @@ export function queryFinanzAI(
   const { remainingDays } = getRemainingDaysInCurrentMonth();
   const dailyBudget = Math.max(0, Math.round((checkingBalance - pendingFixed) / remainingDays));
 
-  switch (intent) {
+  let result: QueryEngineResult;
+
+  if (
+    !followUpResolution.inheritedFromSlots &&
+    outcome.isAmbiguous &&
+    resolvedIntent !== 'wishlist_evaluation'
+  ) {
+    result = solveClarification(entities, outcome.candidateIntents);
+    return {
+      ...result,
+      extractedEntities: entities,
+      updatedSlots: buildUpdatedSlots(result.intent, entities, slots),
+    };
+  }
+
+  switch (resolvedIntent) {
     case 'greeting_help':
-      return solveGreetingHelp();
+      result = solveGreetingHelp();
+      break;
 
     case 'future_savings_projection':
-      return solveFutureSavings(targetHorizon, context);
+      result = solveFutureSavings(entities.horizon, context);
+      break;
 
     case 'goal_target_reach':
-      return solveGoalTargetReach(extractedAmount, context);
+      result = solveGoalTargetReach(entities.amount, context);
+      break;
 
     case 'income_cashflow':
-      return solveIncomeCashflow(context);
+      result = solveIncomeCashflow(context);
+      break;
 
     case 'credit_card_details':
-      return solveCreditCardDetails(context);
+      result = solveCreditCardDetails(context, entities);
+      break;
 
     case 'total_debt_audit':
-      return solveTotalDebtAudit(context);
+      result = solveTotalDebtAudit(context);
+      break;
 
     case 'subscriptions_audit':
-      return solveSubscriptionsAudit(context);
+      result = solveSubscriptionsAudit(context);
+      break;
 
     case 'shared_savings_partner':
-      return solveSharedSavings(context);
+      result = solveSharedSavings(context);
+      break;
 
     case 'windfall_bonus':
-      return solveWindfallBonus(extractedAmount, context);
+      result = solveWindfallBonus(entities.amount, context);
+      break;
 
     case 'wishlist_evaluation':
-      return solveWishlistEvaluation(context);
+      result = solveWishlistEvaluation(context, entities);
+      break;
 
     case 'invest_recommendation':
-      return solveInvestRecommendation(accounts);
+      result = solveInvestRecommendation(accounts);
+      break;
 
     case 'card_vs_savings':
-      return solveCardVsSavings(accounts, recurringItems, period);
+      result = solveCardVsSavings(accounts, recurringItems, period);
+      break;
 
     case 'safe_to_save':
-      return solveSafeToSave(
+      result = solveSafeToSave(
         accounts,
         recurringItems,
         period,
@@ -1900,38 +2610,55 @@ export function queryFinanzAI(
         payments,
         context.variableExpenses
       );
+      break;
 
     case 'what_if_spend':
-      return solveWhatIfSpend(
-        extractedAmount || 50000,
+      result = solveWhatIfSpend(
+        entities.amount || 50000,
         accounts,
         recurringItems,
         period,
         dailyBudget,
         payments,
-        context.variableExpenses
+        context.variableExpenses,
+        entities
       );
+      break;
 
     case 'survival_health':
-      return solveSurvivalHealth(
+      result = solveSurvivalHealth(
         accounts,
         recurringItems,
         variableExpenses,
         period,
         context.report
       );
+      break;
 
     case 'pending_commitments':
-      return solvePendingCommitments(accounts, recurringItems, period, payments);
+      result = solvePendingCommitments(accounts, recurringItems, period, payments);
+      break;
 
     case 'category_audit':
-      return solveCategoryAudit(variableExpenses, period);
+      result = solveCategoryAudit(variableExpenses, period);
+      break;
 
     case 'amount_only':
-      return solveAmountOnly(extractedAmount || 0);
+      result = solveAmountOnly(entities.amount || 0);
+      break;
 
     case 'fallback':
     default:
-      return solveFallback();
+      result =
+        entities.amount !== null || entities.horizon !== null || entities.category !== null
+          ? solveClarification(entities, outcome.candidateIntents)
+          : solveFallback();
+      break;
   }
+
+  return {
+    ...result,
+    extractedEntities: entities,
+    updatedSlots: buildUpdatedSlots(result.intent, entities, slots),
+  };
 }

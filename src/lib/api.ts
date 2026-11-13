@@ -1076,3 +1076,152 @@ export async function deleteFuturePurchase(
   return { success: true };
 }
 
+// ============================================================================
+// FINANZAI CHAT HÍBRIDO (Cloudflare Workers AI + Tool-Calling + D1)
+// ============================================================================
+
+export interface RemoteFinanzAIChatSuccess {
+  ok: true;
+  source: 'workers_ai';
+  result: {
+    intent: string;
+    title: string;
+    verdict: string;
+    verdictTone: 'emerald' | 'amber' | 'coral' | 'blue' | 'neutral';
+    recommendation: string;
+    detailedBreakdown: string[];
+    metrics?: Array<{
+      label: string;
+      value: string;
+      tone?: 'emerald' | 'amber' | 'coral' | 'blue' | 'neutral';
+    }>;
+    suggestedFollowUps?: string[];
+    proposedActions?: any[];
+    updatedSlots?: Record<string, unknown>;
+  };
+  slots: Record<string, unknown>;
+  userMessageId: string;
+  assistantMessageId: string;
+}
+
+export interface RemoteFinanzAIChatFallback {
+  ok: false;
+  fallback: true;
+  reason?: string;
+}
+
+export type RemoteFinanzAIChatResponse =
+  | RemoteFinanzAIChatSuccess
+  | RemoteFinanzAIChatFallback;
+
+export interface RemoteFinanzAIHistoryItem {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  source: 'workers_ai' | 'local';
+  structuredResult?: RemoteFinanzAIChatSuccess['result'];
+  createdAt: string;
+}
+
+export async function sendFinanzAIChatMessage(input: {
+  message: string;
+  period?: string;
+  slots?: Record<string, unknown>;
+  history?: Array<{ role: 'user' | 'assistant'; text: string }>;
+  timeoutMs?: number;
+}): Promise<RemoteFinanzAIChatResponse> {
+  const token = await getToken();
+  if (!token) {
+    return { ok: false, fallback: true, reason: 'Sin sesión remota activa' };
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = controller
+    ? setTimeout(() => controller.abort(), input.timeoutMs ?? 12000)
+    : null;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/finanzai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        message: input.message,
+        period: input.period,
+        slots: input.slots,
+        history: input.history,
+      }),
+      signal: controller?.signal,
+    });
+
+    if (!response.ok) {
+      return { ok: false, fallback: true, reason: `HTTP ${response.status}` };
+    }
+
+    const data = (await response.json()) as RemoteFinanzAIChatResponse;
+    if (data && data.ok === true && data.result) {
+      return data;
+    }
+    return {
+      ok: false,
+      fallback: true,
+      reason: (data as RemoteFinanzAIChatFallback)?.reason || 'Respuesta remota no estructurada',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      fallback: true,
+      reason: err instanceof Error ? err.message : 'Fallo de red',
+    };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function fetchFinanzAIHistory(): Promise<{
+  messages: RemoteFinanzAIHistoryItem[];
+  slots: Record<string, unknown>;
+} | null> {
+  const token = await getToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/finanzai/history`, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as {
+      messages?: RemoteFinanzAIHistoryItem[];
+      slots?: Record<string, unknown>;
+    };
+    return {
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      slots: data.slots && typeof data.slots === 'object' ? data.slots : {},
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function clearFinanzAIHistoryRemote(): Promise<void> {
+  const token = await getToken();
+  if (!token) return;
+  try {
+    await fetch(`${API_BASE_URL}/finanzai/history`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch {
+    // Ignorar error offline al limpiar historial remoto
+  }
+}
+
+

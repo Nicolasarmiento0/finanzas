@@ -2,6 +2,12 @@ name = "finanzapp-api"
 main = "src/index.ts"
 compatibility_date = "2025-03-01"
 
+[ai]
+binding = "AI"
+
+[vars]
+FINANZAI_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "finanzapp-db"

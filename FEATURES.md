@@ -149,6 +149,7 @@
   - `src/lib/currency.ts` (`formatCLP`, `setGlobalPrivacyMode`, `getGlobalPrivacyMode`, `subscribePrivacyMode`)
   - `src/context/PrivacyContext.tsx` (`PrivacyProvider`, `usePrivacy`)
   - `src/components/ui/PrivacyToggleButton.tsx` (`PrivacyToggleButton` en variantes `pill` e `icon`)
+  - `src/components/finance/FinanzAIAssistantModal.tsx` (`maskSensitiveText` para enmascaramiento reactivo de montos `$...` en el hilo conversacional)
   - `src/app/_layout.tsx`
 - **Puntos de Contacto / Interfaces:**
   - **Funciones / Hooks:** `formatCLP(amount, options?)`, `usePrivacy() -> { isPrivacyEnabled, togglePrivacy, setPrivacyEnabled }`.
@@ -209,7 +210,7 @@
   - `src/app/(main)/dashboard.tsx` (`DashboardScreen`)
   - `src/lib/finance.ts` (`calculateProjectedPosition`)
   - `src/lib/intelligence.ts` (`generateFinancialIntelligence`)
-  - `src/context/FinanzAIContext.tsx` (`syncFinancialData`)
+  - `src/context/FinanzAIContext.tsx` (`syncFinancialData`, `mutationVersion`, `requestedTab`, `clearRequestedTab`)
 - **Puntos de Contacto / Interfaces:**
   - **Llamadas API concurrentes (`loadAllData`):** `getAccounts()`, `getRecurringItems()`, `getMonthlyPayments()`, `getVariableExpenses()`, `getFuturePurchases()`.
   - **Tabs de Módulo (`DashboardTab`):** `'summary' | 'wallet' | 'fixed' | 'cards' | 'savings' | 'future_purchases'`.
@@ -612,15 +613,32 @@
 
 ---
 
+## [feat-finanzai-knowledge-base] - Base de Conocimiento Declarativa de Vocabulario y Contexto para FinanzAI
+- **Estado:** Estable
+- **Descripción:** Archivo JSON declarativo y tipado estrictamente (`FinanzAIKnowledge`) que centraliza el vocabulario chileno (`palos`, `lucas`, `gambas`, `k`, `mil`), modismos financieros (`quedar pato`, `descalzar`, `gustito`, `carrete`, `pie`, `al tiro`), reglas ponderadas de intención, alias de categorías/comercios/bancos, disparadores anafóricos de seguimiento y glosario de dominio de FinanzApp (`Safe-to-Spend`, `Patrimonio Con/Sin Ahorro`, `Ahorro en Pareja`, `Regla +10%`) para alimentar tanto al motor local como a futuros orquestadores conversacionales.
+- **Archivos / Rutas Clave:**
+  - `src/data/finanzaiKnowledge.json`
+  - `src/types/finanzaiKnowledge.ts` (`FinanzAIKnowledge`, `SlangMultiplierRule`, `SlangIdiomRule`, `IntentKnowledgeRule`, `CategoryKnowledgeRule`, `FollowUpPatternRule`)
+- **Puntos de Contacto / Interfaces:**
+  - **Acceso tipado:** `getFinanzAIKnowledge()` desde `src/lib/queryEngine.ts`.
+- **Dependencias Internas:**
+  - `feat-finanzai-query-engine`
+
+---
+
 ## [feat-finanzai-query-engine] - Motor Determinista NLP y Asistente Cuantitativo Conversacional (FinanzAI)
 - **Estado:** Estable
-- **Descripción:** Motor de procesamiento de lenguaje natural en español y solucionador matemático determinista (`queryFinanzAI`) que interpreta montos con modismos chilenos (`lucas`, `palos`, `k`, `mil`), horizontes temporales (`en abril`, `próximo mes`, `en 6 meses`, `fin de año`) y resuelve **19 intenciones financieras** (`future_savings_projection`, `goal_target_reach`, `income_cashflow`, `invest_recommendation`, `card_vs_savings`, `safe_to_save`, `what_if_spend`, `survival_health`, `pending_commitments`, `category_audit`, `credit_card_details`, `total_debt_audit`, `subscriptions_audit`, `shared_savings_partner`, `windfall_bonus`, `wishlist_evaluation`, `amount_only`, `greeting_help`, `fallback`) entregando veredictos, métricas exactas, pasos de cálculo transparentes y preguntas de seguimiento.
+- **Descripción:** Motor de procesamiento de lenguaje natural en español y solucionador matemático determinista (`queryFinanzAI`) alimentado por la base de conocimiento declarativa (`finanzaiKnowledge.json`) con scoring ponderado, tolerancia a errores tipográficos leves (distancia de Levenshtein), extractor multi-entidad (`extractQueryEntities`: monto, horizonte, tarjeta, categoría, modalidad contado/cuotas e ítem específico de `futurePurchases`), memoria conversacional de slots multi-turno (`ConversationSlots` + `followUpPatterns` anafóricos), aclaración inteligente ante consultas ambiguas y generación de acciones confirmables (`proposedActions`), resolviendo **19 intenciones financieras** (`future_savings_projection`, `goal_target_reach`, `income_cashflow`, `invest_recommendation`, `card_vs_savings`, `safe_to_save`, `what_if_spend`, `survival_health`, `pending_commitments`, `category_audit`, `credit_card_details`, `total_debt_audit`, `subscriptions_audit`, `shared_savings_partner`, `windfall_bonus`, `wishlist_evaluation`, `amount_only`, `greeting_help`, `fallback`).
 - **Archivos / Rutas Clave:**
-  - `src/lib/queryEngine.ts` (`queryFinanzAI`, `classifyQueryIntent`, `solveWishlistEvaluation`, `QueryContextData`, `QueryEngineResult`, `QueryIntent`)
+  - `src/lib/queryEngine.ts` (`queryFinanzAI`, `classifyQueryIntent`, `extractAmountFromQuery`, `extractQueryEntities`, `getFinanzAIKnowledge`, `solveGreetingHelp`, `solveWishlistEvaluation`, `solveClarification`, `QueryContextData`, `QueryEngineResult`, `QueryIntent`, `ExtractedQueryEntities`, `ConversationSlots`, `ProposedChatAction`)
+  - `src/data/finanzaiKnowledge.json`
+  - `src/types/finanzaiKnowledge.ts`
 - **Puntos de Contacto / Interfaces:**
+  - **Firma:** `queryFinanzAI(query: string, context: QueryContextData, slots?: ConversationSlots): QueryEngineResult`.
   - **Entrada (`QueryContextData`):** `{ accounts, recurringItems, variableExpenses, payments?, futurePurchases?, period?, report? }`.
-  - **Salida (`QueryEngineResult`):** `{ intent, title, verdict, verdictTone, recommendation, detailedBreakdown, metrics?, suggestedFollowUps?, actionLabel?, actionType? }`.
+  - **Salida (`QueryEngineResult`):** `{ intent, title, verdict, verdictTone, recommendation, detailedBreakdown, metrics?, suggestedFollowUps?, actionLabel?, actionType?, proposedActions?, extractedEntities?, updatedSlots? }`.
 - **Dependencias Internas:**
+  - `feat-finanzai-knowledge-base`
   - `feat-finanzai-assistant-modal`
   - `feat-future-purchases-viability`
   - `feat-savings-compound-forecast-engine`
@@ -629,22 +647,52 @@
 
 ---
 
-## [feat-finanzai-assistant-modal] - Modal Interactivo y Botón Flotante Global del Asistente FinanzAI
+## [feat-finanzai-assistant-modal] - Chatbot Multi-Turno, Action Cards Confirmables y Botón Flotante Global (FinanzAI)
 - **Estado:** Estable
-- **Descripción:** Contexto global (`FinanzAIContext`), botón disparador con gradiente esmeralda (`FinanzAITriggerButton`) integrado en el sidebar desktop y en la barra flotante móvil, y modal interactivo (`FinanzAIAssistantModal`) con 13 píldoras de consulta rápida en 1-toque (incluyendo auditoría y plan óptimo de futuras compras), desglose transparente de fórmulas matemáticas y sugerencias dinámicas encadenadas.
+- **Descripción:** Contexto global (`FinanzAIContext`), botón disparador con gradiente esmeralda (`FinanzAITriggerButton`), y modal de chat multi-turno (`FinanzAIAssistantModal`) con procesamiento híbrido (consulta remota a `POST /finanzai/chat` vía Workers AI con degradación automática instantánea al motor determinista local cuando falta red, sesión o cuota), hilo persistente de burbujas usuario/asistente (`messages: ChatMessage[]` con indicador de origen `✨ Workers AI` / `⚡ Motor Local`) sincronizado localmente (`finanzapp_finanzai_history_v1`) y en Cloudflare D1, memoria de slots entre turnos (`slots: ConversationSlots`), botón `Nueva` (`clearConversation`) para reiniciar en cliente y servidor, auto-scroll e indicador de carga (`loadingData || isSending`), composer anclado inferior, 13 píldoras de consulta rápida, chips de entidades detectadas, acordeón colapsable (`AccordionToggle`) para `Desglose Matemático Transparente`, sugerencias encadenadas, **Action Cards confirmables** en línea y enmascaramiento reactivo de montos `$...` cuando el Modo Privado (`isPrivacyEnabled`) está activo.
 - **Archivos / Rutas Clave:**
-  - `src/context/FinanzAIContext.tsx` (`FinanzAIProvider`, `useFinanzAI`)
+  - `src/context/FinanzAIContext.tsx` (`FinanzAIProvider`, `useFinanzAI`, `FinanzAIDashboardTab`, `ChatMessage`)
   - `src/components/ui/FinanzAITriggerButton.tsx` (`FinanzAITriggerButton`)
-  - `src/components/finance/FinanzAIAssistantModal.tsx` (`FinanzAIAssistantModal`, `QUICK_PILLS`)
+  - `src/components/finance/FinanzAIAssistantModal.tsx` (`FinanzAIAssistantModal`, `QUICK_PILLS`, `maskSensitiveText`)
+  - `src/components/ui/AccordionToggle.tsx` (`AccordionToggle`)
   - `src/components/layout/AdaptiveNavigation.tsx`
+  - `src/app/(main)/dashboard.tsx` (`mutationVersion`, `requestedTab`)
 - **Puntos de Contacto / Interfaces:**
-  - **Hook `useFinanzAI`:** `{ isOpen, openFinanzAI, closeFinanzAI, currentQuery, setCurrentQuery, executeFinanzAIQuery, activeResult, loadingData, refreshFinancialData, syncFinancialData }`.
+  - **Hook `useFinanzAI`:** `{ isOpen, openFinanzAI, closeFinanzAI, currentQuery, setCurrentQuery, executeFinanzAIQuery, activeResult, messages, slots, clearConversation, loadingData, isSending, refreshFinancialData, executeProposedAction, mutationVersion, requestedTab, requestDashboardTab, clearRequestedTab, syncFinancialData }`.
+  - **Almacenamiento Local:** Clave `finanzapp_finanzai_history_v1` vía `src/lib/storage.ts` (compactación automática para límite de `SecureStore` en nativo).
   - **Props de `FinanzAITriggerButton`:** `{ variant?: 'sidebar' | 'mobile-fab' | 'header-pill', onPress? }`.
 - **Dependencias Internas:**
   - `feat-finanzai-query-engine`
+  - `feat-finanzai-hybrid-llm-backend`
+  - `feat-privacy-camouflage-mode`
+  - `feat-wallet-variable-expenses`
   - `feat-future-purchases-viability`
+  - `feat-fixed-monthly-checklist`
   - `feat-layout-adaptive-navigation`
   - `feat-dashboard-console`
+
+---
+
+## [feat-finanzai-hybrid-llm-backend] - Orquestador Conversacional Híbrido con Cloudflare Workers AI y Tool-Calling Determinista
+- **Estado:** Estable
+- **Descripción:** Endpoints conversacionales autenticados en Cloudflare Workers (`POST /finanzai/chat`, `GET /finanzai/history`, `DELETE /finanzai/history`) respaldados por el binding nativo de **Cloudflare Workers AI** (`env.AI`, modelo por defecto `@cf/meta/llama-3.3-70b-instruct-fp8-fast`), persistencia multi-dispositivo en Cloudflare D1 (tabla `finanzai_messages`), inyección compacta del glosario y reglas desde `finanzaiKnowledge.json`, cálculo de snapshot financiero en servidor (incluyendo cuentas de ahorro compartidas) y loop de **tool-calling determinista** (`get_financial_snapshot`, `simulate_spend`, `simulate_purchase_installments`, `project_savings_horizon`, `evaluate_future_purchases`, `propose_action`) para garantizar cero alucinaciones numéricas y respuesta con `fallback: true` ante falta de binding o cuota agotada.
+- **Archivos / Rutas Clave:**
+  - `backend/src/finanzai.ts` (`runWorkersAIChatTurn`, `loadFinanzAIHistory`, `saveFinanzAITurn`, `clearFinanzAIHistory`, `ensureFinanzAITable`, `formatCLPBackend`)
+  - `backend/src/index.ts` (`POST /finanzai/chat`, `GET /finanzai/history`, `DELETE /finanzai/history`, `Bindings.AI`)
+  - `backend/src/db/schema.sql` (tabla `finanzai_messages` e índice `idx_finanzai_messages_user_created`)
+  - `backend/wrangler.toml` (binding `[ai]` y variable `FINANZAI_MODEL`)
+  - `backend/tsconfig.json`
+  - `src/lib/api.ts` (`sendFinanzAIChatMessage`, `fetchFinanzAIHistory`, `clearFinanzAIHistoryRemote`)
+- **Puntos de Contacto / Interfaces:**
+  - **Endpoints HTTP (Bearer token):** `POST /finanzai/chat` (`{ message, period?, slots?, history? }` -> `{ ok: true, source: 'workers_ai', result, slots, userMessageId, assistantMessageId } | { ok: false, fallback: true, reason }`), `GET /finanzai/history`, `DELETE /finanzai/history`.
+  - **Tabla D1:** `finanzai_messages` (`id`, `user_id`, `role`, `content`, `source`, `structured_json`, `slots_json`, `period`, `created_at`).
+- **Dependencias Internas:**
+  - `feat-auth-session-persistence`
+  - `feat-finanzai-knowledge-base`
+  - `feat-finanzai-query-engine`
+  - `feat-finanzai-assistant-modal`
+  - `feat-savings-shared-partner-sync`
+  - `feat-future-purchases-viability`
 
 ---
 
