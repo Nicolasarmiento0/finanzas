@@ -98,6 +98,8 @@ interface RecurringRecord {
   category: string;
   start_date: string;
   end_date: string | null;
+  installments_count?: number | null;
+  total_purchase_amount?: number | null;
   is_active: number;
 }
 
@@ -412,9 +414,9 @@ async function loadUserFinancialDataset(
       .prepare(
         `SELECT target_type, target_id, period, is_paid
          FROM monthly_payments
-         WHERE user_id = ? AND period = ?`
+         WHERE user_id = ?`
       )
-      .bind(userId, period)
+      .bind(userId)
       .all<PaymentRecord>(),
     db
       .prepare(
@@ -464,9 +466,15 @@ function buildFinancialSnapshot(dataset: UserFinancialDataset): FinancialSnapsho
     .filter((item) => item.type === 'expense')
     .reduce((sum, item) => sum + (item.amount || 0), 0);
 
+  const targetYM = period.slice(0, 7);
   const paidRecurringIds = new Set(
     payments
-      .filter((p) => p.target_type === 'recurring_item' && p.is_paid)
+      .filter(
+        (p) =>
+          p.target_type === 'recurring_item' &&
+          p.period.slice(0, 7) === targetYM &&
+          p.is_paid
+      )
       .map((p) => p.target_id)
   );
 
@@ -486,14 +494,113 @@ function buildFinancialSnapshot(dataset: UserFinancialDataset): FinancialSnapsho
   const remainingDaysInMonth = Math.max(1, daysInMonth - now.getUTCDate() + 1);
   const safeToSpendTotal = Math.max(0, checkingBalance - pendingFixedExpenses);
   const dailyBudget = Math.round(safeToSpendTotal / remainingDaysInMonth);
+  const currentBaseYM = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const nonInstallmentCats = new Set(['educacion', 'suscripciones', 'servicios']);
+
+  const monthDiff = (fromYM: string, toYM: string): number => {
+    const [fy, fm] = fromYM.split('-').map(Number);
+    const [ty, tm] = toYM.split('-').map(Number);
+    return (ty - fy) * 12 + (tm - fm);
+  };
+  const shiftYM = (ym: string, delta: number): string => {
+    const [y, m] = ym.split('-').map(Number);
+    const total = y * 12 + (m - 1) + delta;
+    const ny = Math.floor(total / 12);
+    const nm = (total % 12) + 1;
+    return `${ny}-${String(nm).padStart(2, '0')}`;
+  };
 
   const creditCards = accounts
     .filter((a) => a.type === 'credit_card')
     .map((card) => {
-      const recurringCharges = activeItems
-        .filter((item) => item.type === 'expense' && item.account_id === card.id)
-        .reduce((sum, item) => sum + (item.amount || 0), 0);
-      const usedAmount = Math.max(0, card.current_balance || 0) + recurringCharges;
+      const cardAllExpenses = recurringItems.filter(
+        (item) => item.is_active && item.type === 'expense' && item.account_id === card.id
+      );
+      const isCardPaidInPeriod = payments.some(
+        (p) =>
+          p.is_paid &&
+          p.target_type === 'credit_card' &&
+          p.target_id === card.id &&
+          p.period.slice(0, 7) === targetYM
+      );
+      const settledBasePriorToTarget =
+        targetYM > currentBaseYM &&
+        payments.some((p) => {
+          if (!p.is_paid || p.target_type !== 'credit_card' || p.target_id !== card.id) {
+            return false;
+          }
+          const pYM = p.period.slice(0, 7);
+          return pYM >= currentBaseYM && pYM < targetYM;
+        });
+
+      const baseBalance = Math.max(0, card.current_balance || 0);
+      const pendingBaseBalance =
+        isCardPaidInPeriod || settledBasePriorToTarget ? 0 : baseBalance;
+
+      let unpaidNonInstallmentCharges = 0;
+      let installmentCommittedTotal = 0;
+
+      for (const item of cardAllExpenses) {
+        const startYM = (item.start_date || targetYM).slice(0, 7);
+        const endYM = item.end_date ? item.end_date.slice(0, 7) : null;
+        const cat = (item.category || '').toLowerCase();
+        const cuotasMatch = item.title.match(/(\d+)\s*cuotas?/i);
+        let totalInstallments: number | null = null;
+        if (endYM && endYM >= startYM) {
+          const span = monthDiff(startYM, endYM) + 1;
+          if (span >= 1 && (!nonInstallmentCats.has(cat) || Boolean(cuotasMatch))) {
+            totalInstallments = span;
+          }
+        } else if (cuotasMatch) {
+          const parsed = parseInt(cuotasMatch[1], 10);
+          if (parsed >= 1) totalInstallments = parsed;
+        }
+
+        if (totalInstallments) {
+          const periods: string[] = [];
+          for (let i = 0; i < totalInstallments; i += 1) {
+            periods.push(shiftYM(startYM, i));
+          }
+          const paidPeriods = new Set<string>();
+          for (const p of payments) {
+            if (!p.is_paid) continue;
+            const pYM = p.period.slice(0, 7);
+            if (
+              (p.target_type === 'credit_card' && p.target_id === card.id) ||
+              (p.target_type === 'recurring_item' && p.target_id === item.id)
+            ) {
+              paidPeriods.add(pYM);
+            }
+          }
+          let paidCount = 0;
+          for (const m of periods) {
+            if (m <= targetYM && paidPeriods.has(m)) paidCount += 1;
+          }
+          const rawAmount = Math.max(0, Math.round(item.amount || 0));
+          const hasExplicitTotal =
+            typeof item.total_purchase_amount === 'number' &&
+            item.total_purchase_amount > 0;
+          const totalPurchase = hasExplicitTotal
+            ? Math.round(item.total_purchase_amount!)
+            : rawAmount;
+          const quota =
+            hasExplicitTotal && rawAmount < totalPurchase
+              ? rawAmount
+              : Math.round(totalPurchase / totalInstallments);
+          const recovered =
+            paidCount >= totalInstallments
+              ? totalPurchase
+              : Math.min(totalPurchase, paidCount * quota);
+          installmentCommittedTotal += Math.max(0, totalPurchase - recovered);
+        } else if (isRecurringActiveInPeriod(item, period)) {
+          if (!isCardPaidInPeriod && !paidRecurringIds.has(item.id)) {
+            unpaidNonInstallmentCharges += item.amount || 0;
+          }
+        }
+      }
+
+      const usedAmount =
+        pendingBaseBalance + unpaidNonInstallmentCharges + installmentCommittedTotal;
       const creditLimit = Math.max(0, card.credit_limit || 0);
       const availableCredit = Math.max(0, creditLimit - usedAmount);
       const usagePercent =

@@ -64,6 +64,8 @@ export interface RecurringItem {
   category: string;
   start_date: string;
   end_date: string | null;
+  installments_count?: number | null;
+  total_purchase_amount?: number | null;
   is_active: boolean;
   sub_items: RecurringSubItem[];
   created_at: string;
@@ -98,6 +100,8 @@ export interface CreateRecurringItemInput {
   category?: string;
   start_date?: string;
   end_date?: string | null;
+  installments_count?: number | null;
+  total_purchase_amount?: number | null;
   is_active?: boolean;
   sub_items?: Array<{ name: string; amount: number }>;
 }
@@ -430,6 +434,59 @@ export async function deleteAccount(id: string): Promise<void> {
 // MOVIMIENTOS RECURRENTES (/recurring-items) Y SUB-ÍTEMS
 // ============================================================================
 
+const RECURRING_INSTALLMENT_META_KEY = '@finanzapp_recurring_installment_meta_v2';
+
+interface LocalInstallmentMeta {
+  installments_count: number | null;
+  total_purchase_amount: number | null;
+}
+
+async function loadInstallmentMetaMap(): Promise<
+  Record<string, LocalInstallmentMeta>
+> {
+  try {
+    const raw = await getStoredItem(RECURRING_INSTALLMENT_META_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, LocalInstallmentMeta>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveInstallmentMetaEntry(
+  id: string,
+  meta: LocalInstallmentMeta | null
+): Promise<void> {
+  const map = await loadInstallmentMetaMap();
+  if (!meta || (meta.installments_count == null && meta.total_purchase_amount == null)) {
+    delete map[id];
+  } else {
+    map[id] = meta;
+  }
+  await saveStoredItem(RECURRING_INSTALLMENT_META_KEY, JSON.stringify(map));
+}
+
+function mergeInstallmentMeta(
+  item: RecurringItem,
+  metaMap: Record<string, LocalInstallmentMeta>
+): RecurringItem {
+  const hasServerInstallments =
+    item.installments_count !== undefined && item.installments_count !== null;
+  const hasServerTotal =
+    item.total_purchase_amount !== undefined && item.total_purchase_amount !== null;
+  if (hasServerInstallments || hasServerTotal) {
+    return item;
+  }
+  const localMeta = metaMap[item.id];
+  if (!localMeta) return item;
+  return {
+    ...item,
+    installments_count: localMeta.installments_count,
+    total_purchase_amount: localMeta.total_purchase_amount,
+  };
+}
+
 export async function getRecurringItems(filters?: {
   account_id?: string;
   type?: RecurringItemType;
@@ -449,7 +506,10 @@ export async function getRecurringItems(filters?: {
   if (!response.ok) {
     throw new Error(data.error || 'Error al obtener los ítems recurrentes');
   }
-  return data.recurring_items ?? [];
+  const metaMap = await loadInstallmentMetaMap();
+  return (data.recurring_items ?? []).map((item) =>
+    mergeInstallmentMeta(item, metaMap)
+  );
 }
 
 export async function createRecurringItem(
@@ -466,7 +526,29 @@ export async function createRecurringItem(
   if (!response.ok || !data.recurring_item) {
     throw new Error(data.error || 'Error al crear el ítem recurrente');
   }
-  return data.recurring_item;
+
+  let created = data.recurring_item;
+  if (
+    input.installments_count !== undefined ||
+    input.total_purchase_amount !== undefined
+  ) {
+    const meta: LocalInstallmentMeta = {
+      installments_count: input.installments_count ?? null,
+      total_purchase_amount: input.total_purchase_amount ?? null,
+    };
+    await saveInstallmentMetaEntry(created.id, meta);
+    if (
+      created.installments_count === undefined &&
+      created.total_purchase_amount === undefined
+    ) {
+      created = {
+        ...created,
+        installments_count: meta.installments_count,
+        total_purchase_amount: meta.total_purchase_amount,
+      };
+    }
+  }
+  return created;
 }
 
 export async function updateRecurringItem(
@@ -484,7 +566,29 @@ export async function updateRecurringItem(
   if (!response.ok || !data.recurring_item) {
     throw new Error(data.error || 'Error al actualizar el ítem recurrente');
   }
-  return data.recurring_item;
+
+  let updated = data.recurring_item;
+  if (
+    input.installments_count !== undefined ||
+    input.total_purchase_amount !== undefined
+  ) {
+    const meta: LocalInstallmentMeta = {
+      installments_count: input.installments_count ?? null,
+      total_purchase_amount: input.total_purchase_amount ?? null,
+    };
+    await saveInstallmentMetaEntry(id, meta);
+    if (
+      updated.installments_count === undefined &&
+      updated.total_purchase_amount === undefined
+    ) {
+      updated = {
+        ...updated,
+        installments_count: meta.installments_count,
+        total_purchase_amount: meta.total_purchase_amount,
+      };
+    }
+  }
+  return updated;
 }
 
 export async function deleteRecurringItem(id: string): Promise<void> {

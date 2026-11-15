@@ -1060,7 +1060,7 @@ export function solveCreditCardDetails(
 
   const metricsList = cardsToShow.map((c) => ({
     card: c,
-    metrics: calculateCreditCardMetrics(c, recurringItems, period),
+    metrics: calculateCreditCardMetrics(c, recurringItems, period, context.payments),
   }));
 
   const breakdownLines = metricsList.map(({ card, metrics }) => {
@@ -1600,7 +1600,7 @@ export function solveWhatIfSpend(
       : undefined) || creditCards[0];
 
   const cardMetrics = selectedCard
-    ? calculateCreditCardMetrics(selectedCard, recurringItems, period)
+    ? calculateCreditCardMetrics(selectedCard, recurringItems, period, payments)
     : null;
   const lacksCardQuota =
     isInstallments && cardMetrics !== null && cardMetrics.availableCredit < amount;

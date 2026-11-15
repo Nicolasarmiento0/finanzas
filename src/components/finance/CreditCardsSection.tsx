@@ -22,14 +22,20 @@ import {
   ArrowUp,
   BarChart3,
   Check,
+  CheckCircle2,
   Clock,
+  Coffee,
   CreditCard,
   Flame,
+  HandCoins,
   Layers,
   Pencil,
   Plus,
+  Receipt,
   Sparkles,
+  Tag,
   Trash2,
+  Utensils,
   Wallet,
   X,
 } from 'lucide-react-native';
@@ -56,6 +62,7 @@ import {
   CardBrand,
   CreateAccountInput,
   CreateRecurringItemInput,
+  MonthlyPayment,
   RecurringItem,
   UpdateAccountInput,
   UpdateRecurringItemInput,
@@ -67,7 +74,13 @@ import {
   formatPeriodFull,
   formatPeriodShort,
   getCategoryColor,
+  getCategoryLabel,
+  getInstallmentProgress,
+  getInstallmentSchedule,
   isItemActiveInMonth,
+  SHARED_EXPENSE_CATEGORIES,
+  SHARED_EXPENSE_CATEGORY_IDS,
+  SharedExpenseCategoryIcon,
   shiftPeriod,
 } from '@/lib/finance';
 import { colors, radius } from '@/theme/tokens';
@@ -79,33 +92,35 @@ const SUGGESTED_NAMES = new Set([
   'Tarjeta de Crédito',
 ]);
 
-const INSTALLMENT_PRESETS = [
-  { label: '1 Mes (Contado)', months: 1 },
-  { label: '3 Cuotas', months: 3 },
-  { label: '6 Cuotas', months: 6 },
-  { label: '12 Cuotas', months: 12 },
-  { label: '24 Cuotas', months: 24 },
+const INSTALLMENT_COUNT_PRESETS = [1, 3, 6, 12, 18, 24];
+
+const RECURRING_DURATION_PRESETS = [
   { label: 'Permanente', months: 0 },
+  { label: '3 Meses', months: 3 },
+  { label: '6 Meses', months: 6 },
+  { label: '12 Meses', months: 12 },
 ];
 
-const CARD_CHARGE_CATEGORIES = [
-  'suscripciones',
-  'alimentacion',
-  'tecnologia',
-  'transporte',
-  'salud',
-  'prestamo',
-  'servicios',
-  'fijo',
-  'general',
-];
-
-function formatCategoryLabel(cat: string): string {
-  const clean = (cat || '').toLowerCase().trim();
-  if (clean === 'alimentacion') return 'ALIMENTACIÓN';
-  if (clean === 'tecnologia') return 'TECNOLOGÍA';
-  if (clean === 'prestamo') return 'PRÉSTAMO';
-  return clean.toUpperCase();
+function renderSharedCategoryIcon(
+  iconName: SharedExpenseCategoryIcon,
+  size: number,
+  color: string
+) {
+  switch (iconName) {
+    case 'Utensils':
+      return <Utensils size={size} color={color} />;
+    case 'Coffee':
+      return <Coffee size={size} color={color} />;
+    case 'Tag':
+      return <Tag size={size} color={color} />;
+    case 'Sparkles':
+      return <Sparkles size={size} color={color} />;
+    case 'HandCoins':
+      return <HandCoins size={size} color={color} />;
+    case 'Receipt':
+    default:
+      return <Receipt size={size} color={color} />;
+  }
 }
 
 function getWalletStripPalette(brand: CardBrand, index: number): {
@@ -156,6 +171,8 @@ interface CreditCardsSectionProps {
   period: string;
   accounts: Account[];
   recurringItems: RecurringItem[];
+  payments?: MonthlyPayment[];
+  onToggleCardPaid?: (cardId: string) => Promise<void>;
   onScrollToEdit?: () => void;
   onCreateAccount: (input: CreateAccountInput) => Promise<void>;
   onUpdateAccount?: (id: string, input: UpdateAccountInput) => Promise<void>;
@@ -174,6 +191,8 @@ export function CreditCardsSection({
   period,
   accounts,
   recurringItems,
+  payments,
+  onToggleCardPaid,
   onScrollToEdit,
   onCreateAccount,
   onUpdateAccount,
@@ -226,16 +245,23 @@ export function CreditCardsSection({
   const [subAmount, setSubAmount] = useState('');
   const [submittingSub, setSubmittingSub] = useState(false);
 
-  // Estado para agregar un paquete/gasto matriz directamente a una tarjeta (con temporalidad y cuotas)
+  // Estado para agregar un paquete/gasto matriz directamente a una tarjeta (compra en cuotas o cargo recurrente)
   const [activeCardForNewGroup, setActiveCardForNewGroup] = useState<
     string | null
   >(null);
+  const [groupChargeMode, setGroupChargeMode] = useState<'installments' | 'recurring'>(
+    'installments'
+  );
+  const [groupAmountInputMode, setGroupAmountInputMode] = useState<'total' | 'quota'>(
+    'total'
+  );
   const [groupTitle, setGroupTitle] = useState('');
   const [groupAmount, setGroupAmount] = useState('');
-  const [groupCategory, setGroupCategory] = useState('suscripciones');
+  const [groupCategory, setGroupCategory] = useState('general');
   const [groupStartDate, setGroupStartDate] = useState(period);
-  const [groupEndDate, setGroupEndDate] = useState('');
-  const [groupInstallments, setGroupInstallments] = useState<number | null>(null);
+  const [groupEndDate, setGroupEndDate] = useState(() => shiftPeriod(period, 2));
+  const [groupInstallments, setGroupInstallments] = useState<number>(3);
+  const [groupCustomInstallments, setGroupCustomInstallments] = useState('3');
   const [submittingGroup, setSubmittingGroup] = useState(false);
   const [groupErrorMsg, setGroupErrorMsg] = useState<string | null>(null);
 
@@ -297,13 +323,18 @@ export function CreditCardsSection({
       const brandMeta =
         CARD_DESIGN_OPTIONS.find((o) => o.id === brand) ||
         CARD_DESIGN_OPTIONS[2];
-      const cardItems = recurringItems.filter(
-        (item) =>
-          item.account_id === card.id &&
-          item.type === 'expense' &&
-          isItemActiveInMonth(item, period)
+      const allCardExpenses = recurringItems.filter(
+        (item) => item.account_id === card.id && item.type === 'expense'
       );
-      const metrics = calculateCreditCardMetrics(card, cardItems, period);
+      const cardItems = allCardExpenses.filter((item) =>
+        isItemActiveInMonth(item, period)
+      );
+      const metrics = calculateCreditCardMetrics(
+        card,
+        allCardExpenses,
+        period,
+        payments
+      );
       const palette = getWalletStripPalette(brand, idx);
       return {
         card,
@@ -314,7 +345,7 @@ export function CreditCardsSection({
         palette,
       };
     });
-  }, [creditCards, recurringItems, period]);
+  }, [creditCards, recurringItems, period, payments]);
 
   const activeCardEntry = useMemo(() => {
     if (cardsWithMetrics.length === 0) return null;
@@ -341,8 +372,24 @@ export function CreditCardsSection({
       (acc, c) => acc + c.metrics.recurringCharges,
       0
     );
+    const totalMonthlyBilled = cardsWithMetrics.reduce(
+      (acc, c) => acc + c.metrics.monthlyBilledTotal,
+      0
+    );
+    const totalPendingBilled = cardsWithMetrics.reduce(
+      (acc, c) => acc + c.metrics.pendingBilledTotal,
+      0
+    );
+    const totalInstallmentCommitted = cardsWithMetrics.reduce(
+      (acc, c) => acc + c.metrics.installmentCommittedTotal,
+      0
+    );
+    const totalRecoveredCredit = cardsWithMetrics.reduce(
+      (acc, c) => acc + c.metrics.recoveredCredit,
+      0
+    );
     const totalBase = cardsWithMetrics.reduce(
-      (acc, c) => acc + c.metrics.baseBalance,
+      (acc, c) => acc + c.metrics.effectiveBaseBalance,
       0
     );
     const usagePercent =
@@ -367,6 +414,10 @@ export function CreditCardsSection({
       totalUsed,
       totalAvailable,
       totalRecurring,
+      totalMonthlyBilled,
+      totalPendingBilled,
+      totalInstallmentCommitted,
+      totalRecoveredCredit,
       totalBase,
       usagePercent,
       freePercent,
@@ -391,7 +442,55 @@ export function CreditCardsSection({
     return [activeCardEntry];
   }, [showAllCardsExpanded, activeCardEntry, cardsWithMetrics]);
 
-  const handleSelectPreset = (months: number) => {
+  const computeInstallmentPreview = (
+    rawAmountStr: string,
+    installmentsCount: number,
+    inputMode: 'total' | 'quota',
+    startDate: string
+  ) => {
+    const count = Math.max(1, Math.round(installmentsCount || 1));
+    const parsed = Math.max(
+      0,
+      Math.round(Number(rawAmountStr.replace(/\D/g, '') || 0))
+    );
+    const startPeriod = startDate.trim() || period;
+    const endPeriod =
+      count === 1 ? startPeriod : shiftPeriod(startPeriod, count - 1);
+    if (inputMode === 'quota') {
+      return {
+        count,
+        monthlyQuota: parsed,
+        totalPurchase: parsed * count,
+        startPeriod,
+        endPeriod,
+      };
+    }
+    const monthlyQuota = parsed > 0 ? Math.round(parsed / count) : 0;
+    return {
+      count,
+      monthlyQuota,
+      totalPurchase: parsed,
+      startPeriod,
+      endPeriod,
+    };
+  };
+
+  const groupInstallmentPreview = computeInstallmentPreview(
+    groupAmount,
+    groupInstallments,
+    groupAmountInputMode,
+    groupStartDate
+  );
+
+  const handleSelectInstallmentCount = (count: number) => {
+    const safeCount = Math.max(1, Math.min(60, Math.round(count || 1)));
+    setGroupInstallments(safeCount);
+    setGroupCustomInstallments(String(safeCount));
+    const base = groupStartDate.trim() || period;
+    setGroupEndDate(safeCount === 1 ? base : shiftPeriod(base, safeCount - 1));
+  };
+
+  const handleSelectRecurringPreset = (months: number) => {
     setGroupInstallments(months);
     const base = groupStartDate.trim() || period;
     if (months === 0) {
@@ -411,37 +510,72 @@ export function CreditCardsSection({
       setExpandedCardCharges((prev) => ({ ...prev, [cardId]: true }));
       setSelectedWalletCardId(cardId);
       setActiveCardForNewGroup(cardId);
+      setGroupChargeMode('installments');
+      setGroupAmountInputMode('total');
       setGroupTitle('');
       setGroupAmount('');
-      setGroupCategory('suscripciones');
+      setGroupCategory('general');
       setGroupStartDate(period);
-      setGroupEndDate('');
-      setGroupInstallments(null);
+      setGroupInstallments(3);
+      setGroupCustomInstallments('3');
+      setGroupEndDate(shiftPeriod(period, 2));
       setGroupErrorMsg(null);
     }
   };
 
   // Estado para editar un cargo en tarjeta
   const [editingChargeId, setEditingChargeId] = useState<string | null>(null);
+  const [editChargeMode, setEditChargeMode] = useState<'installments' | 'recurring'>(
+    'recurring'
+  );
+  const [editAmountInputMode, setEditAmountInputMode] = useState<'total' | 'quota'>(
+    'total'
+  );
   const [editChargeTitle, setEditChargeTitle] = useState('');
   const [editChargeAmount, setEditChargeAmount] = useState('');
-  const [editChargeCategory, setEditChargeCategory] = useState('suscripciones');
+  const [editChargeCategory, setEditChargeCategory] = useState('general');
   const [editChargeStartDate, setEditChargeStartDate] = useState(period);
   const [editChargeEndDate, setEditChargeEndDate] = useState('');
-  const [editChargeInstallments, setEditChargeInstallments] = useState<number | null>(null);
+  const [editChargeInstallments, setEditChargeInstallments] = useState<number>(3);
+  const [editChargeCustomInstallments, setEditChargeCustomInstallments] =
+    useState('3');
   const [savingEditCharge, setSavingEditCharge] = useState(false);
   const [editChargeError, setEditChargeError] = useState<string | null>(null);
+
+  const editInstallmentPreview = computeInstallmentPreview(
+    editChargeAmount,
+    editChargeInstallments,
+    editAmountInputMode,
+    editChargeStartDate
+  );
 
   const openEditCharge = (item: RecurringItem) => {
     triggerAccordionAnimation();
     setExpandedCardCharges((prev) => ({ ...prev, [item.account_id]: true }));
     setEditingChargeId(item.id);
     setEditChargeTitle(item.title);
-    setEditChargeAmount(String(item.amount));
-    setEditChargeCategory(item.category || 'suscripciones');
+    setEditChargeCategory(item.category || 'general');
     setEditChargeStartDate(item.start_date || period);
     setEditChargeEndDate(item.end_date || '');
-    setEditChargeInstallments(null);
+
+    const schedule = getInstallmentSchedule(item, { isCreditCard: true });
+
+    if (schedule) {
+      const count = schedule.totalInstallments;
+      const total = schedule.totalPurchaseAmount;
+      setEditChargeMode('installments');
+      setEditAmountInputMode('total');
+      setEditChargeAmount(String(total));
+      setEditChargeInstallments(count);
+      setEditChargeCustomInstallments(String(count));
+      setEditChargeEndDate(schedule.endPeriod);
+    } else {
+      setEditChargeMode('recurring');
+      setEditAmountInputMode('quota');
+      setEditChargeAmount(String(item.amount));
+      setEditChargeInstallments(0);
+      setEditChargeCustomInstallments('3');
+    }
     setEditChargeError(null);
   };
 
@@ -452,7 +586,17 @@ export function CreditCardsSection({
     setEditChargeError(null);
   };
 
-  const handleSelectEditPreset = (months: number) => {
+  const handleSelectEditInstallmentCount = (count: number) => {
+    const safeCount = Math.max(1, Math.min(60, Math.round(count || 1)));
+    setEditChargeInstallments(safeCount);
+    setEditChargeCustomInstallments(String(safeCount));
+    const base = editChargeStartDate.trim() || period;
+    setEditChargeEndDate(
+      safeCount === 1 ? base : shiftPeriod(base, safeCount - 1)
+    );
+  };
+
+  const handleSelectEditRecurringPreset = (months: number) => {
     setEditChargeInstallments(months);
     const base = editChargeStartDate.trim() || period;
     if (months === 0) {
@@ -468,10 +612,34 @@ export function CreditCardsSection({
     if (!editingChargeId) return;
     setEditChargeError(null);
     const titleClean = editChargeTitle.trim();
-    const amountNum = Math.round(Number(editChargeAmount.replace(/\D/g, '') || 0));
     if (!titleClean) {
       setEditChargeError('El nombre del cargo es obligatorio');
       return;
+    }
+
+    const startClean = editChargeStartDate.trim() || period;
+    let payloadAmount = Math.round(Number(editChargeAmount.replace(/\D/g, '') || 0));
+    let payloadEndDate: string | null = editChargeEndDate.trim()
+      ? editChargeEndDate.trim()
+      : null;
+    let payloadInstallments: number | null = null;
+    let payloadTotalPurchase: number | null = null;
+
+    if (editChargeMode === 'installments') {
+      const preview = computeInstallmentPreview(
+        editChargeAmount,
+        editChargeInstallments,
+        editAmountInputMode,
+        startClean
+      );
+      if (preview.totalPurchase <= 0 || preview.monthlyQuota <= 0) {
+        setEditChargeError('Ingresa el monto de la compra en cuotas');
+        return;
+      }
+      payloadAmount = preview.monthlyQuota;
+      payloadEndDate = preview.endPeriod;
+      payloadInstallments = preview.count;
+      payloadTotalPurchase = preview.totalPurchase;
     }
 
     setSavingEditCharge(true);
@@ -479,10 +647,12 @@ export function CreditCardsSection({
       if (onUpdateRecurringItem) {
         await onUpdateRecurringItem(editingChargeId, {
           title: titleClean,
-          amount: amountNum,
+          amount: payloadAmount,
           category: editChargeCategory,
-          start_date: editChargeStartDate.trim() || period,
-          end_date: editChargeEndDate.trim() ? editChargeEndDate.trim() : null,
+          start_date: startClean,
+          end_date: payloadEndDate,
+          installments_count: payloadInstallments,
+          total_purchase_amount: payloadTotalPurchase,
         });
       }
       closeEditCharge();
@@ -610,32 +780,471 @@ export function CreditCardsSection({
       setGroupErrorMsg('Ingresa una glosa o título para el cargo.');
       return;
     }
-    const amountNum = parseInt(groupAmount.replace(/\D/g, ''), 10) || 0;
+
+    const startClean = groupStartDate.trim() || period;
+    let payloadAmount = parseInt(groupAmount.replace(/\D/g, ''), 10) || 0;
+    let payloadEndDate: string | null = groupEndDate.trim()
+      ? groupEndDate.trim()
+      : null;
+    let payloadInstallments: number | null = null;
+    let payloadTotalPurchase: number | null = null;
+
+    if (groupChargeMode === 'installments') {
+      const preview = computeInstallmentPreview(
+        groupAmount,
+        groupInstallments,
+        groupAmountInputMode,
+        startClean
+      );
+      if (preview.totalPurchase <= 0 || preview.monthlyQuota <= 0) {
+        setGroupErrorMsg('Ingresa el monto de la compra en cuotas.');
+        return;
+      }
+      payloadAmount = preview.monthlyQuota;
+      payloadEndDate = preview.endPeriod;
+      payloadInstallments = preview.count;
+      payloadTotalPurchase = preview.totalPurchase;
+    }
+
     setSubmittingGroup(true);
     setGroupErrorMsg(null);
     try {
       await onCreateRecurringItem({
         account_id: cardId,
         title: groupTitle.trim(),
-        amount: amountNum,
+        amount: payloadAmount,
         type: 'expense',
-        category: groupCategory.trim() || 'suscripciones',
-        start_date: groupStartDate.trim() || period,
-        end_date: groupEndDate.trim() ? groupEndDate.trim() : null,
+        category: groupCategory.trim() || 'general',
+        start_date: startClean,
+        end_date: payloadEndDate,
+        installments_count: payloadInstallments,
+        total_purchase_amount: payloadTotalPurchase,
         is_active: true,
       });
       setGroupTitle('');
       setGroupAmount('');
-      setGroupCategory('suscripciones');
+      setGroupCategory('general');
       setGroupStartDate(period);
-      setGroupEndDate('');
-      setGroupInstallments(null);
+      setGroupInstallments(3);
+      setGroupCustomInstallments('3');
+      setGroupEndDate(shiftPeriod(period, 2));
       setActiveCardForNewGroup(null);
     } catch (err: any) {
       setGroupErrorMsg(err?.message || 'Error al guardar el cargo en la tarjeta');
     } finally {
       setSubmittingGroup(false);
     }
+  };
+
+  const renderCategorySelector = (
+    selectedCat: string,
+    onSelect: (catId: string) => void
+  ) => {
+    const cleanSelected = (selectedCat || 'general').toLowerCase().trim();
+    const isLegacyCategory =
+      Boolean(cleanSelected) && !SHARED_EXPENSE_CATEGORY_IDS.has(cleanSelected);
+
+    return (
+      <View style={styles.chipsWrap}>
+        {SHARED_EXPENSE_CATEGORIES.map((cat) => {
+          const selected = cleanSelected === cat.id;
+          return (
+            <Pressable
+              key={cat.id}
+              onPress={() => onSelect(cat.id)}
+              style={[
+                styles.chip,
+                selected && {
+                  borderColor: cat.color,
+                  backgroundColor: `${cat.color}24`,
+                },
+              ]}
+            >
+              {renderSharedCategoryIcon(
+                cat.iconName,
+                12,
+                selected ? cat.color : colors.textSecondary
+              )}
+              <Text
+                style={[
+                  styles.chipText,
+                  selected && { color: cat.color, fontWeight: '700' },
+                ]}
+              >
+                {cat.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+
+        {isLegacyCategory ? (
+          <View
+            style={[
+              styles.chip,
+              {
+                borderColor: getCategoryColor(cleanSelected),
+                backgroundColor: `${getCategoryColor(cleanSelected)}20`,
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.categoryChipDot,
+                { backgroundColor: getCategoryColor(cleanSelected) },
+              ]}
+            />
+            <Text
+              style={[
+                styles.chipText,
+                { color: getCategoryColor(cleanSelected), fontWeight: '700' },
+              ]}
+            >
+              Actual: {getCategoryLabel(cleanSelected)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
+  const renderChargeScheduleForm = (cfg: {
+    chargeMode: 'installments' | 'recurring';
+    onChangeChargeMode: (mode: 'installments' | 'recurring') => void;
+    amountInputMode: 'total' | 'quota';
+    onChangeAmountInputMode: (mode: 'total' | 'quota') => void;
+    title: string;
+    onChangeTitle: (val: string) => void;
+    titleLabel: string;
+    titlePlaceholder: string;
+    amount: string;
+    onChangeAmount: (val: string) => void;
+    recurringAmountLabel: string;
+    category: string;
+    onChangeCategory: (catId: string) => void;
+    installmentsCount: number;
+    onChangeInstallmentsCount: (count: number) => void;
+    customInstallments: string;
+    onChangeCustomInstallments: (val: string) => void;
+    startDate: string;
+    onChangeStartDate: (val: string) => void;
+    endDate: string;
+    onChangeEndDate: (val: string) => void;
+    installmentPreview: {
+      count: number;
+      monthlyQuota: number;
+      totalPurchase: number;
+      startPeriod: string;
+      endPeriod: string;
+    };
+    onSelectInstallmentCount: (count: number) => void;
+    onSelectRecurringPreset: (months: number) => void;
+  }) => {
+    const isInstallments = cfg.chargeMode === 'installments';
+
+    return (
+      <>
+        {/* Selector de Modalidad: Compra en Cuotas vs Suscripción / Recurrente */}
+        <View style={styles.formSectionGroup}>
+          <Text style={styles.fieldSectionLabel}>MODALIDAD DEL CARGO</Text>
+          <View style={styles.chargeModeRow}>
+            <Pressable
+              onPress={() => {
+                cfg.onChangeChargeMode('installments');
+                if (cfg.installmentsCount < 1) {
+                  cfg.onSelectInstallmentCount(3);
+                } else {
+                  cfg.onSelectInstallmentCount(cfg.installmentsCount);
+                }
+              }}
+              style={[
+                styles.chargeModeBtn,
+                isInstallments && styles.chargeModeBtnActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chargeModeBtnText,
+                  isInstallments && styles.chargeModeBtnTextActive,
+                ]}
+              >
+                💳 Compra en Cuotas
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                cfg.onChangeChargeMode('recurring');
+                cfg.onChangeAmountInputMode('quota');
+              }}
+              style={[
+                styles.chargeModeBtn,
+                !isInstallments && styles.chargeModeBtnActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.chargeModeBtnText,
+                  !isInstallments && styles.chargeModeBtnTextActive,
+                ]}
+              >
+                🔄 Suscripción / Recurrente
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {/* Toggle Total Compra vs Valor Cuota cuando es Compra en Cuotas */}
+        {isInstallments ? (
+          <View style={styles.amountInputToggleRow}>
+            <Text style={styles.amountInputToggleHint}>Ingresar monto por:</Text>
+            <View style={styles.amountInputToggleGroup}>
+              <Pressable
+                onPress={() => cfg.onChangeAmountInputMode('total')}
+                style={[
+                  styles.amountInputToggleBtn,
+                  cfg.amountInputMode === 'total' &&
+                    styles.amountInputToggleBtnActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.amountInputToggleText,
+                    cfg.amountInputMode === 'total' &&
+                      styles.amountInputToggleTextActive,
+                  ]}
+                >
+                  Total Compra
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => cfg.onChangeAmountInputMode('quota')}
+                style={[
+                  styles.amountInputToggleBtn,
+                  cfg.amountInputMode === 'quota' &&
+                    styles.amountInputToggleBtnActive,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.amountInputToggleText,
+                    cfg.amountInputMode === 'quota' &&
+                      styles.amountInputToggleTextActive,
+                  ]}
+                >
+                  Valor Cuota
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Campos Principales: Glosa y Monto */}
+        <View style={[styles.twoCol, !isDesktop && styles.twoColMobile]}>
+          <View style={styles.col}>
+            <GlassInput
+              label={cfg.titleLabel}
+              placeholder={cfg.titlePlaceholder}
+              value={cfg.title}
+              onChangeText={cfg.onChangeTitle}
+            />
+          </View>
+          <View style={styles.col}>
+            <GlassInput
+              label={
+                isInstallments
+                  ? cfg.amountInputMode === 'total'
+                    ? 'Total de la Compra (CLP)'
+                    : 'Valor de cada Cuota (CLP)'
+                  : cfg.recurringAmountLabel
+              }
+              placeholder={
+                isInstallments && cfg.amountInputMode === 'total'
+                  ? 'Ej. 300000'
+                  : 'Ej. 25000'
+              }
+              keyboardType="numeric"
+              value={cfg.amount}
+              onChangeText={cfg.onChangeAmount}
+            />
+          </View>
+        </View>
+
+        {/* Categoría Unificada con Gastos Variables del Mes */}
+        <View style={styles.formSectionGroup}>
+          <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
+          {renderCategorySelector(cfg.category, cfg.onChangeCategory)}
+        </View>
+
+        {/* Plazo y Cuotas */}
+        <View style={styles.formSectionGroup}>
+          <View style={styles.sectionTitleRowWithIcon}>
+            <Clock size={13} color={colors.textSecondary} />
+            <Text style={styles.fieldSectionLabel}>
+              {isInstallments
+                ? 'CANTIDAD DE CUOTAS Y MES DE INICIO'
+                : 'PLAZO Y VIGENCIA (¿POR CUÁNTO TIEMPO?)'}
+            </Text>
+          </View>
+
+          {isInstallments ? (
+            <>
+              <View style={styles.chipsWrap}>
+                {INSTALLMENT_COUNT_PRESETS.map((count) => {
+                  const isSelected = cfg.installmentsCount === count;
+                  return (
+                    <Pressable
+                      key={`inst-${count}`}
+                      onPress={() => cfg.onSelectInstallmentCount(count)}
+                      style={[
+                        styles.chip,
+                        styles.installmentChip,
+                        isSelected && styles.installmentChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          isSelected && styles.chipTextActive,
+                        ]}
+                      >
+                        {count} {count === 1 ? 'cuota' : 'cuotas'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View
+                style={[
+                  styles.twoCol,
+                  !isDesktop && styles.twoColMobile,
+                  { marginTop: 8 },
+                ]}
+              >
+                <View style={styles.col}>
+                  <GlassInput
+                    label="N° Cuotas Personalizado"
+                    placeholder="Ej. 10"
+                    keyboardType="numeric"
+                    value={cfg.customInstallments}
+                    onChangeText={(text) => {
+                      cfg.onChangeCustomInstallments(text);
+                      const parsed = Number.parseInt(
+                        text.replace(/\D/g, ''),
+                        10
+                      );
+                      if (Number.isFinite(parsed) && parsed >= 1) {
+                        cfg.onSelectInstallmentCount(parsed);
+                      }
+                    }}
+                  />
+                </View>
+                <View style={styles.col}>
+                  <GlassInput
+                    label="Mes Primera Cuota (YYYY-MM)"
+                    placeholder={period}
+                    value={cfg.startDate}
+                    onChangeText={(text) => {
+                      cfg.onChangeStartDate(text);
+                      if (/^\d{4}-\d{2}$/.test(text.trim())) {
+                        cfg.onChangeEndDate(
+                          cfg.installmentsCount <= 1
+                            ? text.trim()
+                            : shiftPeriod(text.trim(), cfg.installmentsCount - 1)
+                        );
+                      }
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Resumen en vivo de Compra en Cuotas */}
+              <View style={styles.installmentPreviewBox}>
+                <Text style={styles.installmentPreviewText}>
+                  {cfg.installmentPreview.count}{' '}
+                  {cfg.installmentPreview.count === 1 ? 'cuota' : 'cuotas'} de{' '}
+                  {formatCLP(cfg.installmentPreview.monthlyQuota)}/mes · Total
+                  compra: {formatCLP(cfg.installmentPreview.totalPurchase)}
+                </Text>
+                <Text style={styles.installmentPreviewSubtext}>
+                  Vigencia:{' '}
+                  {formatPeriodFull(cfg.installmentPreview.startPeriod)} →{' '}
+                  {formatPeriodFull(cfg.installmentPreview.endPeriod)} · En Gastos
+                  Fijos se mostrará solo la cuota mensual y en esta tarjeta el
+                  compromiso total se irá liberando al marcar cada mes pagado.
+                </Text>
+              </View>
+            </>
+          ) : (
+            <>
+              <View style={styles.chipsWrap}>
+                {RECURRING_DURATION_PRESETS.map((preset) => {
+                  const isSelected = cfg.installmentsCount === preset.months;
+                  return (
+                    <Pressable
+                      key={preset.label}
+                      onPress={() => cfg.onSelectRecurringPreset(preset.months)}
+                      style={[
+                        styles.chip,
+                        styles.installmentChip,
+                        isSelected && styles.installmentChipActive,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chipText,
+                          isSelected && styles.chipTextActive,
+                        ]}
+                      >
+                        {preset.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View
+                style={[
+                  styles.twoCol,
+                  !isDesktop && styles.twoColMobile,
+                  { marginTop: 8 },
+                ]}
+              >
+                <View style={styles.col}>
+                  <GlassInput
+                    label="Mes Inicio (YYYY-MM)"
+                    placeholder={period}
+                    value={cfg.startDate}
+                    onChangeText={(text) => {
+                      cfg.onChangeStartDate(text);
+                      cfg.onChangeInstallmentsCount(-1);
+                    }}
+                  />
+                </View>
+                <View style={styles.col}>
+                  <GlassInput
+                    label="Mes Término Opcional (YYYY-MM)"
+                    placeholder="Vacío = Permanente"
+                    value={cfg.endDate}
+                    onChangeText={(text) => {
+                      cfg.onChangeEndDate(text);
+                      cfg.onChangeInstallmentsCount(-1);
+                    }}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.validityHelperBox}>
+                <Text style={styles.validityHelperText}>
+                  {cfg.endDate.trim()
+                    ? `Cargo activo desde ${formatPeriodFull(cfg.startDate || period)} hasta ${formatPeriodFull(cfg.endDate)}`
+                    : `Cargo recurrente continuo todos los meses a partir de ${formatPeriodFull(cfg.startDate || period)}`}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
+      </>
+    );
   };
 
   // Valores mostrados en el Hero y Bento según la tarjeta activa o consolidado
@@ -648,6 +1257,15 @@ export function CreditCardsSection({
   const heroUsedAmount = activeCardEntry
     ? activeCardEntry.metrics.usedAmount
     : portfolioStats.totalUsed;
+  const heroMonthlyBilledAmount = activeCardEntry
+    ? activeCardEntry.metrics.monthlyBilledTotal
+    : portfolioStats.totalMonthlyBilled;
+  const heroPendingBilledAmount = activeCardEntry
+    ? activeCardEntry.metrics.pendingBilledTotal
+    : portfolioStats.totalPendingBilled;
+  const heroIsPaidInPeriod = activeCardEntry
+    ? activeCardEntry.metrics.isPaidInPeriod
+    : cardsWithMetrics.length > 0 && cardsWithMetrics.every((c) => c.metrics.isPaidInPeriod);
   const heroUsagePercent = activeCardEntry
     ? activeCardEntry.metrics.usagePercent
     : portfolioStats.usagePercent;
@@ -1119,15 +1737,17 @@ export function CreditCardsSection({
 
           {/* WIDGETS BENTO INFERIORES (Monthly Expenses / Facturado + Tomorrow / Corte) */}
           <View style={styles.bentoPairRow}>
-            {/* Bento Izquierdo: Gasto / Facturado del Mes */}
+            {/* Bento Izquierdo: Facturado del Mes (solo cuota del mes + recurrentes + base) */}
             <View style={styles.bentoLeftWidget}>
-              <Text style={styles.bentoWidgetTitle}>Facturado del Mes</Text>
+              <Text style={styles.bentoWidgetTitle}>
+                {heroIsPaidInPeriod ? 'Pagado este Mes' : 'Facturado del Mes'}
+              </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
                 style={styles.bentoWidgetBigValue}
               >
-                {formatCLP(heroUsedAmount)}
+                {formatCLP(heroMonthlyBilledAmount)}
               </Text>
               <View style={styles.bentoTrendBlock}>
                 <Text
@@ -1141,7 +1761,13 @@ export function CreditCardsSection({
                   ↗ {heroUsagePercent}% de línea
                 </Text>
                 <Text numberOfLines={2} style={styles.bentoTrendSubtext}>
-                  Recurrentes: {formatCLP(activeCardEntry ? activeCardEntry.metrics.recurringCharges : portfolioStats.totalRecurring)}
+                  {heroIsPaidInPeriod
+                    ? `Por pagar mes: ${formatCLP(heroPendingBilledAmount)} · Cupo usado: ${formatCLP(heroUsedAmount)}`
+                    : (activeCardEntry
+                        ? activeCardEntry.metrics.installmentCommittedTotal
+                        : portfolioStats.totalInstallmentCommitted) > 0
+                    ? `Cupo comprometido: ${formatCLP(heroUsedAmount)}`
+                    : `Recurrentes: ${formatCLP(activeCardEntry ? activeCardEntry.metrics.recurringCharges : portfolioStats.totalRecurring)}`}
                 </Text>
               </View>
             </View>
@@ -1182,7 +1808,11 @@ export function CreditCardsSection({
               </View>
 
               <View style={styles.bentoRightBottomRow}>
-                <Text style={styles.bentoRightHintLabel}>Por pagar al corte</Text>
+                <Text style={styles.bentoRightHintLabel}>
+                  {heroBillingEntry?.metrics.isPaidInPeriod
+                    ? 'Pagado este mes ✓'
+                    : 'Por pagar al corte'}
+                </Text>
                 <Text
                   numberOfLines={1}
                   adjustsFontSizeToFit
@@ -1190,7 +1820,7 @@ export function CreditCardsSection({
                 >
                   {formatCLP(
                     heroBillingEntry
-                      ? heroBillingEntry.metrics.usedAmount
+                      ? heroBillingEntry.metrics.pendingBilledTotal
                       : 0
                   )}
                 </Text>
@@ -1664,7 +2294,7 @@ export function CreditCardsSection({
                       </View>
                     </View>
 
-                    {/* Métricas de Cupo: Cupo Disponible = Cupo Total - Monto Facturado/Utilizado */}
+                    {/* Métricas de Cupo: Cupo Disponible = Cupo Total - Comprometido (Cuotas + Mes + Base) */}
                     <View
                       style={[
                         styles.quotaGrid,
@@ -1687,7 +2317,7 @@ export function CreditCardsSection({
                           {formatCLP(metrics.availableCredit)}
                         </Text>
                         <Text style={styles.quotaFormulaHint}>
-                          Cupo Total ({formatCLP(metrics.creditLimit)}) − Utilizado (
+                          Cupo Total ({formatCLP(metrics.creditLimit)}) − Comprometido (
                           {formatCLP(metrics.usedAmount)})
                         </Text>
                       </View>
@@ -1699,7 +2329,7 @@ export function CreditCardsSection({
                         ]}
                       >
                         <Text style={styles.quotaLabel}>
-                          MONTO FACTURADO / UTILIZADO
+                          CUPO UTILIZADO / COMPROMETIDO
                         </Text>
                         <Text
                           style={[
@@ -1710,11 +2340,84 @@ export function CreditCardsSection({
                           {formatCLP(metrics.usedAmount)}
                         </Text>
                         <Text style={styles.quotaFormulaHint}>
-                          Recurrentes mes: {formatCLP(metrics.recurringCharges)} ·
-                          Base: {formatCLP(metrics.baseBalance)}
+                          {metrics.installmentCommittedTotal > 0
+                            ? `Cuotas pend: ${formatCLP(metrics.installmentCommittedTotal)} · Recurrentes pend: ${formatCLP(metrics.unpaidNonInstallmentCharges)} · Base pend: ${formatCLP(metrics.pendingBaseBalance)}`
+                            : `Recurrentes pend: ${formatCLP(metrics.unpaidNonInstallmentCharges)} · Base pend: ${formatCLP(metrics.pendingBaseBalance)}`}
                         </Text>
                       </View>
                     </View>
+
+                    {/* Banner de Recuperación de Cupo y Estado de Pago del Mes */}
+                    {metrics.totalInstallmentsCount > 0 ||
+                    metrics.monthlyBilledTotal > 0 ||
+                    metrics.recoveredCredit > 0 ||
+                    metrics.isPaidInPeriod ? (
+                      <View
+                        style={[
+                          styles.quotaRecoveryBanner,
+                          metrics.isPaidInPeriod && styles.quotaRecoveryBannerPaid,
+                        ]}
+                      >
+                        <View style={styles.quotaRecoveryLeft}>
+                          <View style={styles.quotaRecoveryTitleRow}>
+                            <CheckCircle2
+                              size={14}
+                              color={
+                                metrics.isPaidInPeriod ? '#34D399' : '#A7F3D0'
+                              }
+                            />
+                            <Text style={styles.quotaRecoveryTitle}>
+                              {metrics.isPaidInPeriod
+                                ? metrics.totalInstallmentsCount > 0
+                                  ? `Mes ${formatPeriodShort(period)} Pagado · ${metrics.paidInstallmentsCount}/${metrics.totalInstallmentsCount} cuotas`
+                                  : `Mes ${formatPeriodShort(period)} Pagado`
+                                : metrics.totalInstallmentsCount > 0
+                                  ? `${metrics.paidInstallmentsCount}/${metrics.totalInstallmentsCount} cuotas pagadas`
+                                  : `Facturación ${formatPeriodShort(period)}: ${formatCLP(metrics.monthlyBilledTotal)}`}
+                            </Text>
+                          </View>
+                          <Text style={styles.quotaRecoverySub}>
+                            {metrics.recoveredCredit > 0
+                              ? `Cupo recuperado: +${formatCLP(metrics.recoveredCredit)}${
+                                  metrics.isPaidInPeriod
+                                    ? metrics.installmentCommittedTotal > 0
+                                      ? ` · Pendiente en cuotas: ${formatCLP(metrics.installmentCommittedTotal)}`
+                                      : ''
+                                    : metrics.monthlyBilledTotal > 0
+                                      ? ` · Al pagar este mes liberas +${formatCLP(metrics.monthlyBilledTotal)}`
+                                      : ''
+                                }`
+                              : metrics.isPaidInPeriod
+                                ? 'Cupo del mes liberado en esta tarjeta'
+                                : `Al marcar como pagado recuperarás +${formatCLP(metrics.monthlyBilledTotal)} de cupo`}
+                          </Text>
+                        </View>
+
+                        {onToggleCardPaid ? (
+                          <Pressable
+                            onPress={() => onToggleCardPaid(card.id)}
+                            style={({ pressed }) => [
+                              styles.quotaRecoveryBtn,
+                              metrics.isPaidInPeriod &&
+                                styles.quotaRecoveryBtnPaid,
+                              pressed && styles.pressed,
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.quotaRecoveryBtnText,
+                                metrics.isPaidInPeriod &&
+                                  styles.quotaRecoveryBtnTextPaid,
+                              ]}
+                            >
+                              {metrics.isPaidInPeriod
+                                ? 'Pagado ✓'
+                                : 'Marcar Pagado'}
+                            </Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    ) : null}
 
                     {/* Barra de Progreso de Utilización de Cupo */}
                     <View style={styles.progressSection}>
@@ -1816,150 +2519,46 @@ export function CreditCardsSection({
                   <View style={styles.cardExpenseFormBox}>
                     <View style={styles.cardExpenseFormHeader}>
                       <Text style={styles.inlineBoxTitle}>
-                        Nuevo Cargo o Cuota en {card.name}
+                        Nuevo Cargo o Compra en Cuotas en {card.name}
                       </Text>
                       <Text style={styles.cardExpenseFormSubtitle}>
-                        Ingresa el monto, categoría y la vigencia temporal o número de cuotas
+                        Registra compras en cuotas o suscripciones recurrentes con las mismas categorías de Gastos Variables
                       </Text>
                     </View>
 
-                    {/* Campos Principales: Glosa y Monto */}
-                    <View style={[styles.twoCol, !isDesktop && styles.twoColMobile]}>
-                      <View style={styles.col}>
-                        <GlassInput
-                          label="Glosa / Compra (ej. Cuotas Celular, Netflix, Seguro)"
-                          placeholder="Ej. Cuotas Celular"
-                          value={groupTitle}
-                          onChangeText={setGroupTitle}
-                        />
-                      </View>
-                      <View style={styles.col}>
-                        <GlassInput
-                          label="Monto Mensual CLP (0 si sumarás sub-ítems)"
-                          placeholder="Ej. 25000"
-                          keyboardType="numeric"
-                          value={groupAmount}
-                          onChangeText={setGroupAmount}
-                        />
-                      </View>
-                    </View>
-
-                    {/* Categoría */}
-                    <View style={styles.formSectionGroup}>
-                      <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
-                      <View style={styles.chipsWrap}>
-                        {CARD_CHARGE_CATEGORIES.map((cat) => {
-                          const selected = groupCategory.toLowerCase() === cat;
-                          const catColor = getCategoryColor(cat);
-                          return (
-                            <Pressable
-                              key={cat}
-                              onPress={() => setGroupCategory(cat)}
-                              style={[
-                                styles.chip,
-                                selected && {
-                                  borderColor: catColor,
-                                  backgroundColor: `${catColor}24`,
-                                },
-                              ]}
-                            >
-                              <View
-                                style={[
-                                  styles.categoryChipDot,
-                                  { backgroundColor: catColor },
-                                ]}
-                              />
-                              <Text
-                                style={[
-                                  styles.chipText,
-                                  selected && { color: catColor, fontWeight: '700' },
-                                ]}
-                              >
-                                {formatCategoryLabel(cat)}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-
-                    {/* Plazo y Cuotas (¿Por cuánto tiempo?) */}
-                    <View style={styles.formSectionGroup}>
-                      <View style={styles.sectionTitleRowWithIcon}>
-                        <Clock size={13} color={colors.textSecondary} />
-                        <Text style={styles.fieldSectionLabel}>
-                          PLAZO Y CUOTAS (¿POR CUÁNTO TIEMPO?)
-                        </Text>
-                      </View>
-
-                      {/* Presets de Cuotas */}
-                      <View style={styles.chipsWrap}>
-                        {INSTALLMENT_PRESETS.map((preset) => {
-                          const isSelected = groupInstallments === preset.months;
-                          return (
-                            <Pressable
-                              key={preset.label}
-                              onPress={() => handleSelectPreset(preset.months)}
-                              style={[
-                                styles.chip,
-                                styles.installmentChip,
-                                isSelected && styles.installmentChipActive,
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.chipText,
-                                  isSelected && styles.chipTextActive,
-                                ]}
-                              >
-                                {preset.label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-
-                      {/* Inputs de Mes Inicio y Mes Término */}
-                      <View
-                        style={[
-                          styles.twoCol,
-                          !isDesktop && styles.twoColMobile,
-                          { marginTop: 8 },
-                        ]}
-                      >
-                        <View style={styles.col}>
-                          <GlassInput
-                            label="Mes Inicio (YYYY-MM)"
-                            placeholder={period}
-                            value={groupStartDate}
-                            onChangeText={(text) => {
-                              setGroupStartDate(text);
-                              setGroupInstallments(null);
-                            }}
-                          />
-                        </View>
-                        <View style={styles.col}>
-                          <GlassInput
-                            label="Mes Término Opcional (YYYY-MM)"
-                            placeholder="Vacío = Permanente"
-                            value={groupEndDate}
-                            onChangeText={(text) => {
-                              setGroupEndDate(text);
-                              setGroupInstallments(null);
-                            }}
-                          />
-                        </View>
-                      </View>
-
-                      {/* Helper text de Vigencia */}
-                      <View style={styles.validityHelperBox}>
-                        <Text style={styles.validityHelperText}>
-                          {groupEndDate.trim()
-                            ? `Cargo activo desde ${formatPeriodFull(groupStartDate || period)} hasta ${formatPeriodFull(groupEndDate)}`
-                            : `Cargo recurrente continuo todos los meses a partir de ${formatPeriodFull(groupStartDate || period)}`}
-                        </Text>
-                      </View>
-                    </View>
+                    {renderChargeScheduleForm({
+                      chargeMode: groupChargeMode,
+                      onChangeChargeMode: setGroupChargeMode,
+                      amountInputMode: groupAmountInputMode,
+                      onChangeAmountInputMode: setGroupAmountInputMode,
+                      title: groupTitle,
+                      onChangeTitle: setGroupTitle,
+                      titleLabel:
+                        groupChargeMode === 'installments'
+                          ? 'Glosa / Compra (ej. Notebook, Pasaje, Celular)'
+                          : 'Glosa / Suscripción (ej. Netflix, Spotify, Seguro)',
+                      titlePlaceholder:
+                        groupChargeMode === 'installments'
+                          ? 'Ej. Notebook'
+                          : 'Ej. Netflix',
+                      amount: groupAmount,
+                      onChangeAmount: setGroupAmount,
+                      recurringAmountLabel:
+                        'Monto Mensual CLP (0 si sumarás sub-ítems)',
+                      category: groupCategory,
+                      onChangeCategory: setGroupCategory,
+                      installmentsCount: groupInstallments,
+                      onChangeInstallmentsCount: setGroupInstallments,
+                      customInstallments: groupCustomInstallments,
+                      onChangeCustomInstallments: setGroupCustomInstallments,
+                      startDate: groupStartDate,
+                      onChangeStartDate: setGroupStartDate,
+                      endDate: groupEndDate,
+                      onChangeEndDate: setGroupEndDate,
+                      installmentPreview: groupInstallmentPreview,
+                      onSelectInstallmentCount: handleSelectInstallmentCount,
+                      onSelectRecurringPreset: handleSelectRecurringPreset,
+                    })}
 
                     {groupErrorMsg ? (
                       <Text style={styles.errorText}>{groupErrorMsg}</Text>
@@ -1999,6 +2598,12 @@ export function CreditCardsSection({
                   <View style={styles.cardItemsStack}>
                     {cardItems.map((item) => {
                       const endShort = formatPeriodShort(item.end_date);
+                      const progress = getInstallmentProgress(
+                        item,
+                        period,
+                        payments,
+                        card.id
+                      );
                       return (
                         <View key={item.id} style={styles.parentItemBox}>
                           <View style={styles.parentItemHeader}>
@@ -2026,17 +2631,27 @@ export function CreditCardsSection({
                                       { color: getCategoryColor(item.category || 'general') },
                                     ]}
                                   >
-                                    {formatCategoryLabel(item.category || 'general')}
+                                    {getCategoryLabel(item.category || 'general')}
                                   </Text>
                                 </View>
+                                {progress ? (
+                                  <View style={styles.installmentProgressPill}>
+                                    <Text style={styles.installmentProgressPillText}>
+                                      Cuota {progress.currentInstallmentNumber}/
+                                      {progress.totalInstallments}
+                                    </Text>
+                                  </View>
+                                ) : null}
                               </View>
 
                               <View style={styles.parentItemMetaRow}>
                                 <Clock size={11} color={colors.textSecondary} />
                                 <Text style={styles.parentItemValidityText}>
-                                  {endShort
-                                    ? `Hasta ${endShort} (${item.start_date ? `${formatPeriodShort(item.start_date)} → ` : ''}${endShort})`
-                                    : `Desde ${formatPeriodShort(item.start_date)} · Permanente`}
+                                  {progress
+                                    ? `${formatPeriodShort(progress.startPeriod)} → ${formatPeriodShort(progress.endPeriod)}`
+                                    : endShort
+                                      ? `Hasta ${endShort} (${item.start_date ? `${formatPeriodShort(item.start_date)} → ` : ''}${endShort})`
+                                      : `Desde ${formatPeriodShort(item.start_date)} · Permanente`}
                                 </Text>
                                 {item.sub_items.length > 0 ? (
                                   <Text style={styles.parentItemSubtitle}>
@@ -2044,12 +2659,29 @@ export function CreditCardsSection({
                                   </Text>
                                 ) : null}
                               </View>
+
+                              {progress ? (
+                                <Text style={styles.itemCardQuotaMeta}>
+                                  Total compra: {formatCLP(progress.totalPurchaseAmount)} · Comprometido en cupo:{' '}
+                                  {formatCLP(progress.committedAmount)}
+                                  {progress.recoveredAmount > 0
+                                    ? ` · Recuperado: +${formatCLP(progress.recoveredAmount)}`
+                                    : ''}
+                                </Text>
+                              ) : null}
                             </View>
 
                             <View style={styles.parentItemRight}>
-                              <Text style={styles.parentItemAmount}>
-                                {formatCLP(item.amount)}
-                              </Text>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={styles.parentItemAmount}>
+                                  {formatCLP(progress ? progress.installmentAmount : item.amount)}
+                                </Text>
+                                {progress ? (
+                                  <Text style={styles.parentItemQuotaSuffix}>
+                                    cuota / mes
+                                  </Text>
+                                ) : null}
+                              </View>
                               <View style={styles.parentItemActionBtns}>
                                 <Pressable
                                   onPress={() =>
@@ -2107,142 +2739,35 @@ export function CreditCardsSection({
                                 <Text style={styles.errorText}>{editChargeError}</Text>
                               ) : null}
 
-                              <View
-                                style={[
-                                  styles.twoCol,
-                                  !isDesktop && styles.twoColMobile,
-                                ]}
-                              >
-                                <View style={styles.col}>
-                                  <GlassInput
-                                    label="Nombre del Cargo"
-                                    placeholder="Ej. Netflix, Tienda, Cena"
-                                    value={editChargeTitle}
-                                    onChangeText={setEditChargeTitle}
-                                  />
-                                </View>
-                                <View style={styles.col}>
-                                  <GlassInput
-                                    label="Monto Mensual o Cuota (CLP)"
-                                    placeholder="Ej. 25000"
-                                    keyboardType="numeric"
-                                    value={editChargeAmount}
-                                    onChangeText={setEditChargeAmount}
-                                  />
-                                </View>
-                              </View>
-
-                              <View style={styles.formSectionGroup}>
-                                <View style={styles.sectionTitleRowWithIcon}>
-                                  <Layers size={13} color={colors.textSecondary} />
-                                  <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
-                                </View>
-                                <View style={styles.chipsWrap}>
-                                  {CARD_CHARGE_CATEGORIES.map((cat) => {
-                                    const selected = editChargeCategory === cat;
-                                    const catColor = getCategoryColor(cat);
-                                    return (
-                                      <Pressable
-                                        key={cat}
-                                        onPress={() => setEditChargeCategory(cat)}
-                                        style={[
-                                          styles.chip,
-                                          selected && {
-                                            backgroundColor: `${catColor}20`,
-                                            borderColor: catColor,
-                                          },
-                                        ]}
-                                      >
-                                        <View
-                                          style={[
-                                            styles.categoryChipDot,
-                                            { backgroundColor: catColor },
-                                          ]}
-                                        />
-                                        <Text
-                                          style={[
-                                            styles.chipText,
-                                            selected && {
-                                              color: catColor,
-                                              fontWeight: '700',
-                                            },
-                                          ]}
-                                        >
-                                          {formatCategoryLabel(cat)}
-                                        </Text>
-                                      </Pressable>
-                                    );
-                                  })}
-                                </View>
-                              </View>
-
-                              <View style={styles.formSectionGroup}>
-                                <View style={styles.sectionTitleRowWithIcon}>
-                                  <Clock size={13} color={colors.textSecondary} />
-                                  <Text style={styles.fieldSectionLabel}>
-                                    PLAZO Y CUOTAS (¿POR CUÁNTO TIEMPO?)
-                                  </Text>
-                                </View>
-                                <View style={styles.chipsWrap}>
-                                  {INSTALLMENT_PRESETS.map((preset) => {
-                                    const isSelected =
-                                      editChargeInstallments === preset.months;
-                                    return (
-                                      <Pressable
-                                        key={preset.label}
-                                        onPress={() =>
-                                          handleSelectEditPreset(preset.months)
-                                        }
-                                        style={[
-                                          styles.chip,
-                                          styles.installmentChip,
-                                          isSelected && styles.installmentChipActive,
-                                        ]}
-                                      >
-                                        <Text
-                                          style={[
-                                            styles.chipText,
-                                            isSelected && styles.chipTextActive,
-                                          ]}
-                                        >
-                                          {preset.label}
-                                        </Text>
-                                      </Pressable>
-                                    );
-                                  })}
-                                </View>
-
-                                <View
-                                  style={[
-                                    styles.twoCol,
-                                    !isDesktop && styles.twoColMobile,
-                                    { marginTop: 6 },
-                                  ]}
-                                >
-                                  <View style={styles.col}>
-                                    <GlassInput
-                                      label="Mes Inicio (YYYY-MM)"
-                                      placeholder={period}
-                                      value={editChargeStartDate}
-                                      onChangeText={(text) => {
-                                        setEditChargeStartDate(text);
-                                        setEditChargeInstallments(null);
-                                      }}
-                                    />
-                                  </View>
-                                  <View style={styles.col}>
-                                    <GlassInput
-                                      label="Mes Término (YYYY-MM)"
-                                      placeholder="Vacío = Permanente"
-                                      value={editChargeEndDate}
-                                      onChangeText={(text) => {
-                                        setEditChargeEndDate(text);
-                                        setEditChargeInstallments(null);
-                                      }}
-                                    />
-                                  </View>
-                                </View>
-                              </View>
+                              {renderChargeScheduleForm({
+                                chargeMode: editChargeMode,
+                                onChangeChargeMode: setEditChargeMode,
+                                amountInputMode: editAmountInputMode,
+                                onChangeAmountInputMode: setEditAmountInputMode,
+                                title: editChargeTitle,
+                                onChangeTitle: setEditChargeTitle,
+                                titleLabel: 'Nombre del Cargo',
+                                titlePlaceholder: 'Ej. Notebook, Netflix, Cena',
+                                amount: editChargeAmount,
+                                onChangeAmount: setEditChargeAmount,
+                                recurringAmountLabel: 'Monto Mensual (CLP)',
+                                category: editChargeCategory,
+                                onChangeCategory: setEditChargeCategory,
+                                installmentsCount: editChargeInstallments,
+                                onChangeInstallmentsCount: setEditChargeInstallments,
+                                customInstallments: editChargeCustomInstallments,
+                                onChangeCustomInstallments:
+                                  setEditChargeCustomInstallments,
+                                startDate: editChargeStartDate,
+                                onChangeStartDate: setEditChargeStartDate,
+                                endDate: editChargeEndDate,
+                                onChangeEndDate: setEditChargeEndDate,
+                                installmentPreview: editInstallmentPreview,
+                                onSelectInstallmentCount:
+                                  handleSelectEditInstallmentCount,
+                                onSelectRecurringPreset:
+                                  handleSelectEditRecurringPreset,
+                              })}
 
                               <View
                                 style={[
@@ -3768,5 +4293,172 @@ const styles = StyleSheet.create({
     color: '#34D399',
     fontSize: 10,
     fontWeight: '700',
+  },
+  quotaRecoveryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.25)',
+  },
+  quotaRecoveryBannerPaid: {
+    backgroundColor: 'rgba(16, 185, 129, 0.14)',
+    borderColor: 'rgba(52, 211, 153, 0.45)',
+  },
+  quotaRecoveryLeft: {
+    flex: 1,
+    minWidth: 180,
+    gap: 2,
+  },
+  quotaRecoveryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  quotaRecoveryTitle: {
+    color: colors.textPrimary,
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  quotaRecoverySub: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  quotaRecoveryBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(52, 211, 153, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(52, 211, 153, 0.4)',
+  },
+  quotaRecoveryBtnPaid: {
+    backgroundColor: 'rgba(52, 211, 153, 0.24)',
+    borderColor: '#34D399',
+  },
+  quotaRecoveryBtnText: {
+    color: '#A7F3D0',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  quotaRecoveryBtnTextPaid: {
+    color: '#ECFDF5',
+  },
+  chargeModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  chargeModeBtn: {
+    flex: 1,
+    minWidth: 150,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+    alignItems: 'center',
+  },
+  chargeModeBtnActive: {
+    backgroundColor: 'rgba(96, 165, 250, 0.16)',
+    borderColor: 'rgba(96, 165, 250, 0.55)',
+  },
+  chargeModeBtnText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  chargeModeBtnTextActive: {
+    color: colors.textPrimary,
+    fontWeight: '700',
+  },
+  amountInputToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  amountInputToggleHint: {
+    color: colors.textSecondary,
+    fontSize: 11.5,
+    fontWeight: '600',
+  },
+  amountInputToggleGroup: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  amountInputToggleBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderWidth: 1,
+    borderColor: colors.glassBorder,
+  },
+  amountInputToggleBtnActive: {
+    backgroundColor: 'rgba(52, 211, 153, 0.16)',
+    borderColor: 'rgba(52, 211, 153, 0.5)',
+  },
+  amountInputToggleText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  amountInputToggleTextActive: {
+    color: '#6EE7B7',
+    fontWeight: '700',
+  },
+  installmentPreviewBox: {
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(96, 165, 250, 0.09)',
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.28)',
+    gap: 3,
+  },
+  installmentPreviewText: {
+    color: colors.textPrimary,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  installmentPreviewSubtext: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  installmentProgressPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(96, 165, 250, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.35)',
+  },
+  installmentProgressPillText: {
+    color: '#93C5FD',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  itemCardQuotaMeta: {
+    color: '#93C5FD',
+    fontSize: 11,
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  parentItemQuotaSuffix: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '500',
   },
 });

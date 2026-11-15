@@ -229,13 +229,13 @@
 
 ## [feat-dashboard-period-navigation] - Máquina del Tiempo Mensual y Proyección Patrimonial Multi-Período
 - **Estado:** Estable
-- **Descripción:** Permite desplazarse hacia cualquier mes pasado o futuro (`YYYY-MM`) recalculando dinámicamente saldos proyectados de cuentas corrientes, capitalización compuesta de cuentas de ahorro, vigencia de préstamos/gastos con fechas límite y amortización progresiva de deudas sin perder los saldos reales del período actual.
+- **Descripción:** Permite desplazarse hacia cualquier mes pasado o futuro (`YYYY-MM`) recalculando dinámicamente saldos proyectados de cuentas corrientes, capitalización compuesta de cuentas de ahorro, vigencia de préstamos/gastos con fechas límite y amortización progresiva de deudas (respetando pagos registrados y recuperación de cupo en compras en cuotas vía `calculateCreditCardMetrics(..., payments)`) sin perder los saldos reales del período actual.
 - **Archivos / Rutas Clave:**
   - `src/lib/finance.ts` (`getCurrentPeriod`, `shiftPeriod`, `diffPeriodsInMonths`, `formatPeriodLabel`, `formatPeriodFull`, `calculateProjectedPosition`, `ProjectedFinancialPosition`)
   - `src/app/(main)/dashboard.tsx`
   - `src/app/(main)/tips.tsx`
 - **Puntos de Contacto / Interfaces:**
-  - **Entrada:** `targetPeriod` (`YYYY-MM`), `currentPeriod` (`YYYY-MM`), `accounts: Account[]`, `recurringItems: RecurringItem[]`, `payments?: MonthlyPayment[]`, `variableExpenses?: VariableExpense[]`.
+  - **Entrada:** `targetPeriod` (`YYYY-MM`), `currentPeriod` (`YYYY-MM`), `accounts: Account[]`, `recurringItems: RecurringItem[]`, `options?: { variableExpenses?: VariableExpense[]; payments?: MonthlyPayment[] }`.
   - **Salida (`ProjectedFinancialPosition`):** `{ monthsDiff, checkingTotal, savingsTotal, totalAssets, creditCardDebt, activeFixedLoansDebt, loanAccountsDebt, variableDebtTotal, totalDebt, netWorth, netWorthWithoutSavings, monthlyIncome, monthlyFixedExpenses, monthlyFreeCashFlow, projectedAccounts }`.
 - **Dependencias Internas:**
   - `feat-fixed-temporal-validity`
@@ -279,10 +279,10 @@
 
 ## [feat-summary-category-distribution] - Distribución Semántica de Gastos por Categoría y Barra Apilada
 - **Estado:** Estable
-- **Descripción:** Agrupa todos los gastos fijos vigentes y gastos variables del período según su categoría semántica (`vivienda`, `alimentacion`, `transporte`, `servicios`, `suscripciones`, `educacion`, `salud`, `deudas`, `otros`), renderizando una barra multicolor apilada y tarjetas individuales con su peso porcentual sobre el gasto total y sobre el ingreso mensual.
+- **Descripción:** Agrupa todos los gastos fijos vigentes y gastos variables del período según su categoría semántica (`SHARED_EXPENSE_CATEGORIES`: `alimentacion`, `bebidas`, `transporte`, `entretenimiento`, `prestamo`, `general`, manteniendo retrocompatibilidad en `CATEGORY_LABELS`/`CATEGORY_COLORS` para claves históricas como `vivienda`, `servicios`, `suscripciones`, `educacion`, `salud`, `tecnologia`, `fijo`, `deudas`, `otros`), renderizando una barra multicolor apilada y tarjetas individuales con su peso porcentual sobre el gasto total y sobre el ingreso mensual.
 - **Archivos / Rutas Clave:**
   - `src/components/finance/ExecutiveSummarySection.tsx` (`categoryBreakdown`)
-  - `src/lib/finance.ts` (`CATEGORY_COLORS`, `getCategoryColor`, `getCategoryLabel`)
+  - `src/lib/finance.ts` (`SHARED_EXPENSE_CATEGORIES`, `SHARED_EXPENSE_CATEGORY_IDS`, `CATEGORY_LABELS`, `CATEGORY_COLORS`, `getCategoryColor`, `getCategoryLabel`)
 - **Puntos de Contacto / Interfaces:**
   - **Funciones utilitarias:** `getCategoryColor(category)` y `getCategoryLabel(category)`.
   - **Salida UI:** Barra apilada horizontal proporcional y grilla de tarjetas por categoría con indicador cromático.
@@ -343,9 +343,10 @@
 
 ## [feat-wallet-variable-expenses] - Registro y Edición Resiliente de Gastos Variables del Mes con Descuento en Cuenta
 - **Estado:** Estable
-- **Descripción:** Permite registrar, editar y eliminar gastos variables del día a día asociados a un período (`YYYY-MM`), categoría, fecha y cuenta opcional, descontando o restituyendo automáticamente el monto en el saldo de la cuenta vinculada y contando con un mecanismo de fallback resiliente (`create + delete` con preservación de saldo base) si el worker remoto aún no expone `PUT /variable-expenses/:id`.
+- **Descripción:** Permite registrar, editar y eliminar gastos variables del día a día asociados a un período (`YYYY-MM`), categoría compartida (`SHARED_EXPENSE_CATEGORIES`: `alimentacion`, `bebidas`, `transporte`, `entretenimiento`, `prestamo`, `general`), fecha y cuenta opcional, descontando o restituyendo automáticamente el monto en el saldo de la cuenta vinculada y contando con un mecanismo de fallback resiliente (`create + delete` con preservación de saldo base) si el worker remoto aún no expone `PUT /variable-expenses/:id`.
 - **Archivos / Rutas Clave:**
   - `src/components/finance/WalletSection.tsx`
+  - `src/lib/finance.ts` (`SHARED_EXPENSE_CATEGORIES`)
   - `src/app/(main)/dashboard.tsx` (`handleCreateVariableExpense`, `handleUpdateVariableExpense`, `handleDeleteVariableExpense`)
   - `src/lib/api.ts` (`fetchVariableExpenses`, `createVariableExpense`, `updateVariableExpense`, `deleteVariableExpense`, `VariableExpense`)
   - `backend/src/index.ts` (`GET /variable-expenses`, `POST /variable-expenses`, `PUT /variable-expenses/:id`, `DELETE /variable-expenses/:id`, `ensureVariableExpensesTable`)
@@ -378,14 +379,16 @@
 
 ## [feat-fixed-monthly-checklist] - Checklist Mensual Unificado de Gastos Fijos, Préstamos y Estados de Cuenta de Tarjetas
 - **Estado:** Estable
-- **Descripción:** Lista de verificación interactiva mes a mes que unifica todos los gastos fijos independientes, cuotas de préstamos y el pago total facturado de cada tarjeta de crédito (evitando duplicar cargos recurrentes ya asignados a una tarjeta), permitiendo marcarlos como `PAGADO` o `PENDIENTE` (`POST /monthly-payments/toggle`), calcular el **Remanente Libre Post-Pago** y editar cualquier ítem en línea.
+- **Descripción:** Lista de verificación interactiva mes a mes que unifica todos los gastos fijos independientes, cuotas de préstamos y el pago facturable del mes de cada tarjeta de crédito (`monthlyBilledTotal`: base + cargos recurrentes + cuota mensual vigente, sin exponer ni sumar el total de compras en cuotas), permitiendo marcarlos como `PAGADO` o `PENDIENTE` (`POST /monthly-payments/toggle`), visualizar el progreso `Cuota k/N` de compras en cuotas en tarjetas, calcular el **Remanente Libre Post-Pago** y editar cualquier ítem en línea.
 - **Archivos / Rutas Clave:**
   - `src/components/finance/FixedItemsSection.tsx` (`FixedItemsSection`, `UnifiedChecklistRow`)
-  - `src/app/(main)/dashboard.tsx` (`handleToggleChecklistItem`, `handleCreateRecurringItem`, `handleUpdateRecurringItem`, `handleDeleteRecurringItem`)
+  - `src/app/(main)/dashboard.tsx` (`handleToggleChecklistItem`, `handleToggleCardPaid`, `handleCreateRecurringItem`, `handleUpdateRecurringItem`, `handleDeleteRecurringItem`)
+  - `src/lib/finance.ts` (`calculateCreditCardMetrics`, `getInstallmentProgress`, `getCategoryLabel`)
   - `src/lib/api.ts` (`fetchRecurringItems`, `createRecurringItem`, `updateRecurringItem`, `deleteRecurringItem`, `fetchMonthlyPayments`, `toggleMonthlyPayment`)
   - `backend/src/index.ts` (`GET/POST/PUT/DELETE /recurring-items`, `GET /monthly-payments`, `POST /monthly-payments/toggle`)
   - `backend/src/db/schema.sql` (tablas `recurring_items`, `monthly_payments`)
 - **Puntos de Contacto / Interfaces:**
+  - **Props adicionales en `FixedItemsSection`:** `payments?: MonthlyPayment[]` para evaluación de cuotas y facturación mensual de tarjetas.
   - **Endpoints HTTP:** `GET /monthly-payments?period=YYYY-MM` y `POST /monthly-payments/toggle` con `{ period, target_type: 'recurring_item' | 'loan_installment' | 'credit_card', target_id, amount_paid }`.
   - **Base de Datos:** Restricción `UNIQUE(user_id, period, target_type, target_id)` en `monthly_payments` para hacer upsert idempotente del estado `'paid' | 'pending'`.
 - **Dependencias Internas:**
@@ -450,14 +453,14 @@
 
 ## [feat-cards-quota-and-billing-alerts] - Gestión de Cupo Total, Cupo Disponible, Barra de Uso y Alerta de Día de Facturación
 - **Estado:** Estable
-- **Descripción:** Calcula para cada tarjeta de crédito (`type = 'credit_card'`) su deuda total utilizada (`baseBalance + recurringCharges` vigentes en el mes), el cupo disponible (`creditLimit - totalUsed`), el porcentaje de utilización y los días restantes hasta el próximo día de facturación (`billingDay` 1–31), activando una alerta visual preventiva cuando faltan `<= 5` días para el corte y el saldo utilizado es mayor a cero.
+- **Descripción:** Calcula para cada tarjeta de crédito (`type = 'credit_card'`) su cupo total comprometido (`usedAmount`: `pendingBaseBalance + unpaidNonInstallmentCharges + installmentCommittedTotal`), el saldo base efectivo del período (`effectiveBaseBalance`: cero si un pago anterior al mes consultado ya liquidó el saldo base), el monto facturable del mes (`monthlyBilledTotal`), el saldo aún pendiente de pago al corte (`pendingBilledTotal`, que desciende a `0` al marcar la tarjeta o sus ítems como `PAGADO`), la **recuperación progresiva de cupo** (`recoveredCredit`, `paidInstallmentsCount`, `totalInstallmentsCount`, `isPaidInPeriod`) conforme se marcan meses como `PAGADO` en `monthly_payments`, el cupo disponible (`creditLimit - usedAmount`), el porcentaje de utilización y los días restantes hasta el próximo corte (`billingDay` 1–31).
 - **Archivos / Rutas Clave:**
-  - `src/lib/finance.ts` (`calculateCreditCardMetrics`, `getDaysUntilBillingDay`, `CreditCardMetrics`)
+  - `src/lib/finance.ts` (`calculateCreditCardMetrics`, `calculateInstallmentCommittedBalance`, `getInstallmentSchedule`, `getInstallmentProgress`, `getEffectiveRecurringMonthlyAmount`, `getDaysUntilBillingDay`, `CreditCardMetrics`, `InstallmentProgress`)
   - `src/components/finance/CreditCardsSection.tsx` (`CreditCardsSection`)
   - `backend/src/index.ts` (`GET/POST/PUT/DELETE /accounts`)
   - `backend/src/db/schema.sql` (tabla `accounts`, columnas `credit_limit`, `billing_day`)
 - **Puntos de Contacto / Interfaces:**
-  - **Función Principal:** `calculateCreditCardMetrics(card, recurringItems, period, referenceDate?) -> CreditCardMetrics`.
+  - **Función Principal:** `calculateCreditCardMetrics(card, cardRecurringExpenses, period, payments?) -> CreditCardMetrics`.
   - **CRUD de Plásticos:** Creación, edición en línea (`credit_limit`, `balance`, `billing_day`) y eliminación de cuentas `credit_card`.
 - **Dependencias Internas:**
   - `feat-cards-visual-plastics`
@@ -468,29 +471,34 @@
 
 ## [feat-cards-charges-and-installments] - Gestión de Cargos Recurrentes y Compras en Cuotas Asignadas a Tarjetas de Crédito
 - **Estado:** Estable
-- **Descripción:** Permite vincular suscripciones permanentes o compras en cuotas con duración definida (`1, 3, 6, 12, 24 meses` o fecha personalizada `start_date` / `end_date`) directamente a una tarjeta de crédito específica (`account_id`), calculando automáticamente el mes de término a partir del número de cuotas, soportando sub-ítems anidados y sumando el total de la tarjeta como una única obligación en el checklist mensual.
+- **Descripción:** Permite registrar y editar compras en cuotas (`Total Compra` o `Valor Cuota` con cálculo automático de la cuota mensual en `amount`, persistencia de `installments_count` y `total_purchase_amount`) o suscripciones/cargos recurrentes vinculados a una tarjeta específica (`account_id`), unificando al 100% sus categorías con **Gastos Variables del Mes** (`SHARED_EXPENSE_CATEGORIES`, con soporte retroactivo visual para categorías históricas). Evidencia el compromiso total de la compra únicamente dentro de la tarjeta (`Cuota k/N`, total compra, comprometido y recuperado) mientras en Gastos Fijos del Mes solo se muestra y suma el valor de la cuota mensual.
 - **Archivos / Rutas Clave:**
-  - `src/components/finance/CreditCardsSection.tsx` (`INSTALLMENT_PRESETS`, `computeEndDateFromMonths`, `handleCreateCharge`, `handleSaveEditedCharge`)
-  - `src/lib/api.ts` (`createRecurringItem`, `updateRecurringItem`, `deleteRecurringItem`, `createSubItem`, `deleteSubItem`)
+  - `src/components/finance/CreditCardsSection.tsx` (`INSTALLMENT_COUNT_PRESETS`, `RECURRING_DURATION_PRESETS`, `renderCategorySelector`, `renderChargeScheduleForm`, `handleCreateGroupOnCard`, `handleSaveEditCharge`)
+  - `src/lib/finance.ts` (`SHARED_EXPENSE_CATEGORIES`, `SHARED_EXPENSE_CATEGORY_IDS`, `getInstallmentProgress`, `getEffectiveRecurringMonthlyAmount`, `getCategoryLabel`, `getCategoryColor`)
+  - `src/lib/api.ts` (`RecurringItem`, `CreateRecurringItemInput`, `createRecurringItem`, `updateRecurringItem`, `deleteRecurringItem`, `createSubItem`, `deleteSubItem`, respaldo local `@finanzapp_recurring_installment_meta_v2`)
+  - `backend/src/index.ts` (`ensureRecurringInstallmentColumns`, `normalizeInstallmentsCount`, `normalizeTotalPurchaseAmount`, `GET/POST/PUT /recurring-items`)
+  - `backend/src/db/schema.sql` (tabla `recurring_items`: `installments_count`, `total_purchase_amount`)
 - **Puntos de Contacto / Interfaces:**
-  - **Presets de Duración:** `0` (Permanente), `1`, `3`, `6`, `12`, `24` meses.
+  - **Props en `CreditCardsSection`:** `payments?: MonthlyPayment[]`, `onToggleCardPaid?: (cardId: string) => Promise<void>`.
+  - **Presets:** Modalidad Cuotas (`1, 3, 6, 12, 18, 24` o personalizado) y Recurrente (`0` Permanente, `1, 3, 6, 12, 24` meses).
   - **Vínculo de Datos:** `recurring_items.account_id = card.id`.
 - **Dependencias Internas:**
   - `feat-cards-quota-and-billing-alerts`
   - `feat-fixed-temporal-validity`
   - `feat-fixed-nested-subitems`
   - `feat-fixed-monthly-checklist`
+  - `feat-wallet-variable-expenses`
 
 ---
 
 ## [feat-cards-3d-wallet-bento-showcase] - Consola Visual Bento y Tarjetero 3D Interactivo (Wallet Pocket) en Tarjetas de Crédito
 - **Estado:** Estable
-- **Descripción:** Experiencia visual Dark-First Liquid Glass en la sección de Tarjetas de Crédito y Manejo de Cupos que incorpora: (1) **Hero Ambiental de Cupo Disponible** con halo radial azul/esmeralda, píldora de selección rápida de plástico, indicadores circulares de alertas de corte (`🔥`) y anillo SVG de porcentaje de utilización, botones circulares de acción rápida (`+ Nueva`, `Editar`) y orbe esférico luminoso interactivo; (2) **Tarjetero 3D Esculpido (Wallet Pocket)** en cuero oscuro con costuras vectoriales SVG de donde se asoman las tarjetas apiladas con sus colores reales y monto disponible, permitiendo tocar cualquier plástico para traerlo al frente y desplegar su detalle e ítems; y (3) **Widgets Bento Inferiores** de **Facturado del Mes** y **Próximo Corte / Facturación**.
+- **Descripción:** Experiencia visual Dark-First Liquid Glass en la sección de Tarjetas de Crédito y Manejo de Cupos que incorpora: (1) **Hero Ambiental de Cupo Disponible** con halo radial azul/esmeralda, píldora de selección rápida de plástico, indicadores circulares de alertas de corte (`🔥`) y anillo SVG de porcentaje de utilización, botones circulares de acción rápida (`+ Nueva`, `Editar`) y orbe esférico luminoso interactivo; (2) **Tarjetero 3D Esculpido (Wallet Pocket)** en cuero oscuro con costuras vectoriales SVG de donde se asoman las tarjetas apiladas con sus colores reales y monto disponible, permitiendo tocar cualquier plástico para traerlo al frente y desplegar su detalle e ítems con fórmula aditiva exacta (`Cuotas pend + Recurrentes pend + Base pend = usedAmount`); (3) **Widgets Bento Inferiores** de **Facturado del Mes / Pagado este Mes** (`monthlyBilledTotal`) y **Próximo Corte / Por pagar al corte** (`pendingBilledTotal`, pasando a `$0` con estado `Pagado este mes ✓` al marcar la tarjeta como pagada); y (4) **Banner de Recuperación de Cupo & Estado de Pago** sincronizado con `monthly_payments`.
 - **Archivos / Rutas Clave:**
   - `src/components/finance/CreditCardsSection.tsx` (`CreditCardsSection`, `getWalletStripPalette`, `handleSelectWalletCard`, `portfolioStats`, `orderedWalletStack`)
 - **Puntos de Contacto / Interfaces:**
   - **Estados Visuales Locales:** `selectedWalletCardId`, `showAllCardsExpanded`, `walletPullAnim`.
-  - **Preservación de Interfaz:** Mantiene 100% intactos los props `CreditCardsSectionProps`, cálculos de `calculateCreditCardMetrics` y operaciones CRUD de tarjetas, cargos en cuotas y sub-ítems.
+  - **Props:** Recibe `CreditCardsSectionProps` (incluyendo `payments?` y `onToggleCardPaid?` opcionales).
 - **Dependencias Internas:**
   - `feat-cards-visual-plastics`
   - `feat-cards-quota-and-billing-alerts`
@@ -586,7 +594,7 @@
   - `src/app/(main)/dashboard.tsx` (`intelligenceReport`, banner de diagnóstico superior)
   - `src/components/finance/FinancialTipsSection.tsx`
 - **Puntos de Contacto / Interfaces:**
-  - **Entrada:** `{ period, accounts, recurringItems, variableExpenses, futurePurchases? }`.
+  - **Entrada:** `{ period, accounts, recurringItems, variableExpenses, payments?, futurePurchases? }`.
   - **Salida (`FinancialIntelligenceReport`):** `{ overallScore, healthStatus, totalPotentialSavingsMonthlyCLP, totalPotentialSavingsAnnualCLP, insights: FinancialInsight[], keyRatios }`.
 - **Dependencias Internas:**
   - `feat-dashboard-console`
@@ -675,7 +683,7 @@
 
 ## [feat-finanzai-hybrid-llm-backend] - Orquestador Conversacional Híbrido con Cloudflare Workers AI y Tool-Calling Determinista
 - **Estado:** Estable
-- **Descripción:** Endpoints conversacionales autenticados en Cloudflare Workers (`POST /finanzai/chat`, `GET /finanzai/history`, `DELETE /finanzai/history`) respaldados por el binding nativo de **Cloudflare Workers AI** (`env.AI`, modelo por defecto `@cf/meta/llama-3.3-70b-instruct-fp8-fast`), persistencia multi-dispositivo en Cloudflare D1 (tabla `finanzai_messages`), inyección compacta del glosario y reglas desde `finanzaiKnowledge.json`, cálculo de snapshot financiero en servidor (incluyendo cuentas de ahorro compartidas) y loop de **tool-calling determinista** (`get_financial_snapshot`, `simulate_spend`, `simulate_purchase_installments`, `project_savings_horizon`, `evaluate_future_purchases`, `propose_action`) para garantizar cero alucinaciones numéricas y respuesta con `fallback: true` ante falta de binding o cuota agotada.
+- **Descripción:** Endpoints conversacionales autenticados en Cloudflare Workers (`POST /finanzai/chat`, `GET /finanzai/history`, `DELETE /finanzai/history`) respaldados por el binding nativo de **Cloudflare Workers AI** (`env.AI`, modelo por defecto `@cf/meta/llama-3.3-70b-instruct-fp8-fast`), persistencia multi-dispositivo en Cloudflare D1 (tabla `finanzai_messages`), inyección compacta del glosario y reglas desde `finanzaiKnowledge.json`, cálculo de snapshot financiero en servidor (incluyendo cuentas de ahorro compartidas y cupo de tarjetas consciente de compras en cuotas y pagos registrados en `monthly_payments`) y loop de **tool-calling determinista** (`get_financial_snapshot`, `simulate_spend`, `simulate_purchase_installments`, `project_savings_horizon`, `evaluate_future_purchases`, `propose_action`) para garantizar cero alucinaciones numéricas y respuesta con `fallback: true` ante falta de binding o cuota agotada.
 - **Archivos / Rutas Clave:**
   - `backend/src/finanzai.ts` (`runWorkersAIChatTurn`, `loadFinanzAIHistory`, `saveFinanzAITurn`, `clearFinanzAIHistory`, `ensureFinanzAITable`, `formatCLPBackend`)
   - `backend/src/index.ts` (`POST /finanzai/chat`, `GET /finanzai/history`, `DELETE /finanzai/history`, `Bindings.AI`)
@@ -737,7 +745,7 @@
 - **Puntos de Contacto / Interfaces:**
   - **Endpoints HTTP:** `GET /future-purchases`, `POST /future-purchases`, `PUT /future-purchases/:id`, `DELETE /future-purchases/:id` con respaldo local automático en `@finanzapp_future_purchases_v1`.
   - **Funciones del Motor Cuantitativo:** `evaluateFuturePurchase(item, context, overrideInstallments?, overridePaymentMode?) -> FuturePurchaseEvaluation` y `evaluateFuturePurchasesCart(selectedItems, context) -> FuturePurchaseCartSimulation`.
-  - **Conversión Automática en 1 Toque:** Crea `variable_expenses` (si es al contado) o `recurring_items` con `end_date` calculado (si es en cuotas o suscripción) y marca `status = 'purchased'`.
+  - **Conversión Automática en 1 Toque:** Crea `variable_expenses` (si es al contado) o `recurring_items` con `end_date`, `installments_count` y `total_purchase_amount` calculados (si es en cuotas, usando `expenseCategory` alineado a `SHARED_EXPENSE_CATEGORIES`, o suscripción) y marca `status = 'purchased'`.
 - **Dependencias Internas:**
   - `feat-dashboard-console`
   - `feat-fixed-temporal-validity`

@@ -1,6 +1,17 @@
-import { Account, FuturePurchase, RecurringItem, VariableExpense } from '@/lib/api';
+import {
+  Account,
+  FuturePurchase,
+  MonthlyPayment,
+  RecurringItem,
+  VariableExpense,
+} from '@/lib/api';
 import { formatCLP } from '@/lib/currency';
-import { evaluateFuturePurchase, isItemActiveInMonth, shiftPeriod } from '@/lib/finance';
+import {
+  calculateCreditCardMetrics,
+  evaluateFuturePurchase,
+  isItemActiveInMonth,
+  shiftPeriod,
+} from '@/lib/finance';
 
 export type InsightTone = 'critical' | 'warning' | 'emerald' | 'info';
 
@@ -151,12 +162,14 @@ export function generateFinancialIntelligence({
   accounts,
   recurringItems,
   variableExpenses,
+  payments = [],
   futurePurchases = [],
 }: {
   period: string;
   accounts: Account[];
   recurringItems: RecurringItem[];
   variableExpenses: VariableExpense[];
+  payments?: MonthlyPayment[];
   futurePurchases?: FuturePurchase[];
 }): FinancialIntelligenceReport {
   const insights: FinancialInsight[] = [];
@@ -544,15 +557,15 @@ export function generateFinancialIntelligence({
   let totalCreditUsed = 0;
 
   for (const card of creditCards) {
-    const cardLimit = card.credit_limit || 0;
-    const cardItems = activeRecurring.filter((i) => i.account_id === card.id);
-    const cardBilled = cardItems.reduce((acc, i) => acc + i.amount, 0);
+    const metrics = calculateCreditCardMetrics(card, recurringItems, period, payments);
+    const cardLimit = metrics.creditLimit;
+    const cardUsed = metrics.usedAmount;
 
     totalCreditLimit += cardLimit;
-    totalCreditUsed += cardBilled;
+    totalCreditUsed += cardUsed;
 
     if (cardLimit > 0) {
-      const cardUtilization = Math.round((cardBilled / cardLimit) * 100);
+      const cardUtilization = metrics.usagePercent;
       if (cardUtilization > 35) {
         insights.push({
           id: `insight-card-utilization-${card.id}`,
@@ -561,13 +574,13 @@ export function generateFinancialIntelligence({
           tone: 'warning',
           title: `Tensión en Cupo: ${card.name} al ${cardUtilization}%`,
           badge: `${cardUtilization}% Utilizado`,
-          summary: `Has facturado ${formatCLP(cardBilled)} de un cupo total de ${formatCLP(cardLimit)}.`,
+          summary: `Tienes ${formatCLP(cardUsed)} de cupo utilizado (cuota/facturado del mes: ${formatCLP(metrics.monthlyBilledTotal)}) sobre un límite de ${formatCLP(cardLimit)}.`,
           detail: `Utilizar más del 30% del cupo de una tarjeta degrada tu puntaje de riesgo crediticio ante el sistema bancario chileno y disminuye tu capacidad de respuesta ante urgencias.`,
-          actionStep: `Abona cuotas anticipadas o mantén el saldo facturado por debajo de ${formatCLP(Math.round(cardLimit * 0.3))} antes de tu fecha de cierre.`,
+          actionStep: `Al pagar el estado de cuenta (${formatCLP(metrics.pendingBilledTotal)} pendiente este mes) irás recuperando tu cupo disponible hasta mantenerte bajo ${formatCLP(Math.round(cardLimit * 0.3))}.`,
           metrics: [
-            { label: 'Facturado Actual', value: formatCLP(cardBilled) },
-            { label: 'Cupo Total', value: formatCLP(cardLimit) },
-            { label: 'Límite Saludable (30%)', value: formatCLP(Math.round(cardLimit * 0.3)) },
+            { label: 'Cupo Utilizado', value: formatCLP(cardUsed) },
+            { label: 'Facturado del Mes', value: formatCLP(metrics.monthlyBilledTotal) },
+            { label: 'Cupo Disponible', value: formatCLP(metrics.availableCredit) },
           ],
         });
       }

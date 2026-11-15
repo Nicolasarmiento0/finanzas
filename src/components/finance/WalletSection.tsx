@@ -53,18 +53,33 @@ import {
   formatPeriodFull,
   getCategoryColor,
   isItemActiveInMonth,
+  SHARED_EXPENSE_CATEGORIES,
+  SharedExpenseCategoryIcon,
   shiftPeriod,
 } from '@/lib/finance';
 import { colors, radius } from '@/theme/tokens';
 
-const VARIABLE_QUICK_CATEGORIES = [
-  { id: 'alimentacion', label: 'Almuerzo / Comida', icon: Utensils, color: '#10B981' },
-  { id: 'bebidas', label: 'Bebida / Café', icon: Coffee, color: '#F59E0B' },
-  { id: 'transporte', label: 'Transporte / Uber', icon: Tag, color: '#38BDF8' },
-  { id: 'entretenimiento', label: 'Ocio / Salidas', icon: Sparkles, color: '#EC4899' },
-  { id: 'prestamo', label: 'Préstamo / Deuda', icon: HandCoins, color: '#FB923C' },
-  { id: 'general', label: 'Compras / Varios', icon: Receipt, color: '#94A3B8' },
-];
+function renderSharedCategoryIcon(
+  iconName: SharedExpenseCategoryIcon,
+  size: number,
+  color: string
+) {
+  switch (iconName) {
+    case 'Utensils':
+      return <Utensils size={size} color={color} />;
+    case 'Coffee':
+      return <Coffee size={size} color={color} />;
+    case 'Tag':
+      return <Tag size={size} color={color} />;
+    case 'Sparkles':
+      return <Sparkles size={size} color={color} />;
+    case 'HandCoins':
+      return <HandCoins size={size} color={color} />;
+    case 'Receipt':
+    default:
+      return <Receipt size={size} color={color} />;
+  }
+}
 
 interface WalletSectionProps {
   period: string;
@@ -807,9 +822,8 @@ export function WalletSection({
             <View style={styles.formSectionGroup}>
               <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
               <View style={styles.chipsWrap}>
-                {VARIABLE_QUICK_CATEGORIES.map((cat) => {
+                {SHARED_EXPENSE_CATEGORIES.map((cat) => {
                   const selected = varCategory === cat.id;
-                  const Icon = cat.icon;
                   return (
                     <Pressable
                       key={cat.id}
@@ -822,7 +836,11 @@ export function WalletSection({
                         },
                       ]}
                     >
-                      <Icon size={12} color={selected ? cat.color : colors.textSecondary} />
+                      {renderSharedCategoryIcon(
+                        cat.iconName,
+                        12,
+                        selected ? cat.color : colors.textSecondary
+                      )}
                       <Text
                         style={[
                           styles.chipText,
@@ -995,9 +1013,8 @@ export function WalletSection({
                       <View style={styles.formSectionGroup}>
                         <Text style={styles.fieldSectionLabel}>CATEGORÍA</Text>
                         <View style={styles.chipsWrap}>
-                          {VARIABLE_QUICK_CATEGORIES.map((cat) => {
+                          {SHARED_EXPENSE_CATEGORIES.map((cat) => {
                             const isSelected = editExpenseCategory === cat.id;
-                            const IconComponent = cat.icon;
                             return (
                               <Pressable
                                 key={cat.id}
@@ -1010,10 +1027,11 @@ export function WalletSection({
                                   },
                                 ]}
                               >
-                                <IconComponent
-                                  size={13}
-                                  color={isSelected ? cat.color : colors.textSecondary}
-                                />
+                                {renderSharedCategoryIcon(
+                                  cat.iconName,
+                                  13,
+                                  isSelected ? cat.color : colors.textSecondary
+                                )}
                                 <Text
                                   style={[
                                     styles.chipText,

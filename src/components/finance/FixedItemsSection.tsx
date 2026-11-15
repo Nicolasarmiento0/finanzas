@@ -28,6 +28,7 @@ import { resolveCardBrand } from './CreditCardVisual';
 import {
   Account,
   CreateRecurringItemInput,
+  MonthlyPayment,
   RecurringItem,
   RecurringItemType,
   UpdateRecurringItemInput,
@@ -40,6 +41,8 @@ import {
   formatPeriodFull,
   formatPeriodShort,
   getCategoryColor,
+  getCategoryLabel,
+  getInstallmentProgress,
   isItemActiveInMonth,
   shiftPeriod,
 } from '@/lib/finance';
@@ -60,6 +63,7 @@ interface FixedItemsSectionProps {
   onChangePeriod: (nextPeriod: string) => void;
   accounts: Account[];
   recurringItems: RecurringItem[];
+  payments?: MonthlyPayment[];
   paidItemIdsInPeriod: Set<string>;
   paidCardIdsInPeriod?: Set<string>;
   onTogglePaid: (itemId: string) => Promise<void>;
@@ -85,6 +89,7 @@ export function FixedItemsSection({
   onChangePeriod,
   accounts,
   recurringItems,
+  payments,
   paidItemIdsInPeriod,
   paidCardIdsInPeriod,
   onTogglePaid,
@@ -159,33 +164,38 @@ export function FixedItemsSection({
       { metrics: CreditCardMetrics; cardItems: RecurringItem[] }
     >();
     for (const card of creditCards) {
-      const cardItems = recurringItems.filter(
-        (item) =>
-          item.account_id === card.id &&
-          item.type === 'expense' &&
-          isItemActiveInMonth(item, period)
+      const allCardExpenses = recurringItems.filter(
+        (item) => item.account_id === card.id && item.type === 'expense'
       );
-      const metrics = calculateCreditCardMetrics(card, cardItems, period);
+      const cardItems = allCardExpenses.filter((item) =>
+        isItemActiveInMonth(item, period)
+      );
+      const metrics = calculateCreditCardMetrics(
+        card,
+        allCardExpenses,
+        period,
+        payments
+      );
       map.set(card.id, { metrics, cardItems });
     }
     return map;
-  }, [creditCards, recurringItems, period]);
+  }, [creditCards, recurringItems, period, payments]);
 
-  // Tarjetas activas en el mes si tienen saldo base o cargos vigentes
+  // Tarjetas activas en el mes si tienen facturación del mes (cuota mensual + recurrentes + base)
   const activeCards = creditCards.filter((c) => {
     const data = cardMetricsMap.get(c.id);
-    return data ? data.metrics.usedAmount > 0 : (c.current_balance || 0) > 0;
+    return data ? data.metrics.monthlyBilledTotal > 0 : (c.current_balance || 0) > 0;
   });
 
   const totalCardDebt = activeCards.reduce((sum, c) => {
     const data = cardMetricsMap.get(c.id);
-    return sum + (data ? data.metrics.usedAmount : (c.current_balance || 0));
+    return sum + (data ? data.metrics.monthlyBilledTotal : (c.current_balance || 0));
   }, 0);
 
   const paidCards = activeCards.filter((c) => paidCardIdsInPeriod?.has(c.id));
   const paidCardsAmount = paidCards.reduce((sum, c) => {
     const data = cardMetricsMap.get(c.id);
-    return sum + (data ? data.metrics.usedAmount : (c.current_balance || 0));
+    return sum + (data ? data.metrics.monthlyBilledTotal : (c.current_balance || 0));
   }, 0);
 
   // Gastos fijos directos (no cargados a tarjeta de crédito para evitar duplicación de cobro)
@@ -1047,8 +1057,12 @@ export function FixedItemsSection({
               const cardData = cardMetricsMap.get(card.id);
               const cardMetrics = cardData?.metrics;
               const cardItems = cardData?.cardItems || [];
-              const billedAmount = cardMetrics ? cardMetrics.usedAmount : (card.current_balance || 0);
-              const baseBal = cardMetrics ? cardMetrics.baseBalance : (card.current_balance || 0);
+              const billedAmount = cardMetrics
+                ? cardMetrics.monthlyBilledTotal
+                : (card.current_balance || 0);
+              const baseBal = cardMetrics
+                ? cardMetrics.effectiveBaseBalance
+                : (card.current_balance || 0);
               const recurringTotal = cardMetrics ? cardMetrics.recurringCharges : 0;
 
               return (
@@ -1116,13 +1130,28 @@ export function FixedItemsSection({
                               : `${cardItems.length} cargo(s) recurrente(s) facturado(s): ${formatCLP(recurringTotal)}`}
                           </Text>
                           <View style={styles.cardChargesChipRow}>
-                            {cardItems.map((cItem) => (
-                              <View key={cItem.id} style={styles.cardChargeMiniChip}>
-                                <Text style={styles.cardChargeMiniChipText} numberOfLines={1}>
-                                  {cItem.title}: {formatCLP(cItem.amount)}
-                                </Text>
-                              </View>
-                            ))}
+                            {cardItems.map((cItem) => {
+                              const cProg = getInstallmentProgress(
+                                cItem,
+                                period,
+                                payments,
+                                card.id
+                              );
+                              return (
+                                <View key={cItem.id} style={styles.cardChargeMiniChip}>
+                                  <Text
+                                    style={styles.cardChargeMiniChipText}
+                                    numberOfLines={1}
+                                  >
+                                    {cItem.title}
+                                    {cProg
+                                      ? ` (Cuota ${cProg.currentInstallmentNumber}/${cProg.totalInstallments})`
+                                      : ''}
+                                    : {formatCLP(cProg ? cProg.installmentAmount : cItem.amount)}
+                                  </Text>
+                                </View>
+                              );
+                            })}
                           </View>
                         </View>
                       ) : null}
@@ -1311,6 +1340,12 @@ export function FixedItemsSection({
                   const isEditing = editingItemId === item.id;
                   const endShort = formatPeriodShort(item.end_date);
                   const isCardPaid = Boolean(parentCard && paidCardIdsInPeriod?.has(parentCard.id));
+                  const progress = getInstallmentProgress(
+                    item,
+                    period,
+                    payments,
+                    item.account_id
+                  );
 
                   return (
                     <View key={`card-exp-${item.id}`}>
@@ -1341,7 +1376,14 @@ export function FixedItemsSection({
                             >
                               {item.title}
                             </Text>
-                            {endShort ? (
+                            {progress ? (
+                              <View style={styles.installmentQuotaPill}>
+                                <Text style={styles.installmentQuotaPillText}>
+                                  Cuota {progress.currentInstallmentNumber}/
+                                  {progress.totalInstallments}
+                                </Text>
+                              </View>
+                            ) : endShort ? (
                               <View style={styles.validityBadge}>
                                 <Clock size={11} color={colors.textSecondary} />
                                 <Text style={styles.validityBadgeText}>
@@ -1373,11 +1415,12 @@ export function FixedItemsSection({
                                   { color: getCategoryColor(item.category) },
                                 ]}
                               >
-                                {item.category.toUpperCase()}
+                                {getCategoryLabel(item.category).toUpperCase()}
                               </Text>
                             </View>
                             <Text style={styles.itemMeta}>
                               En {parentCard?.name || 'Tarjeta de Crédito'}
+                              {progress ? ' · Cuota del mes' : ''}
                               {isCardPaid ? ' · PAGADO CON TARJETA' : ' · INCLUIDO EN FACTURACIÓN'}
                             </Text>
                           </View>
@@ -1394,14 +1437,21 @@ export function FixedItemsSection({
                         </Pressable>
 
                         <View style={styles.itemRight}>
-                          <Text
-                            style={[
-                              styles.itemAmount,
-                              isCardPaid && styles.itemAmountPaid,
-                            ]}
-                          >
-                            {formatCLP(item.amount)}
-                          </Text>
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text
+                              style={[
+                                styles.itemAmount,
+                                isCardPaid && styles.itemAmountPaid,
+                              ]}
+                            >
+                              {formatCLP(progress ? progress.installmentAmount : item.amount)}
+                            </Text>
+                            {progress ? (
+                              <Text style={styles.itemQuotaSubLabel}>
+                                cuota / mes
+                              </Text>
+                            ) : null}
+                          </View>
                           <View style={styles.rowActions}>
                             <Pressable
                               onPress={() => startEditingItem(item)}
@@ -2460,5 +2510,26 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.75,
+  },
+  installmentQuotaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(96, 165, 250, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(96, 165, 250, 0.35)',
+  },
+  installmentQuotaPillText: {
+    color: '#93C5FD',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  itemQuotaSubLabel: {
+    color: colors.textSecondary,
+    fontSize: 10,
+    fontWeight: '500',
   },
 });

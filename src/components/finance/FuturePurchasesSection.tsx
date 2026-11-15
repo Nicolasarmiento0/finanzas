@@ -163,7 +163,7 @@ const CATEGORIES_CATALOG: CategoryCatalogItem[] = [
     defaultAmount: '149990',
     defaultMode: 'installments',
     defaultInstallments: 6,
-    expenseCategory: 'vivienda',
+    expenseCategory: 'general',
     color: '#F59E0B',
   },
   {
@@ -658,12 +658,14 @@ export function FuturePurchasesSection({
         if (targetCardId) {
           await onCreateRecurringItem({
             account_id: targetCardId,
-            title: `${item.title} (${n} cuotas)`,
+            title: item.title,
             amount: monthlyQuota,
             type: 'expense',
             category: catMeta.expenseCategory,
             start_date: period,
             end_date: endDate,
+            installments_count: n,
+            total_purchase_amount: item.amount,
             is_active: true,
           });
         }

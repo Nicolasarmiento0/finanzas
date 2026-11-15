@@ -54,6 +54,7 @@ import {
   getCategoryColor,
   getCategoryLabel,
   getCurrentPeriod,
+  getEffectiveRecurringMonthlyAmount,
   isItemActiveInMonth,
   shiftPeriod,
 } from '@/lib/finance';
@@ -102,14 +103,27 @@ export function ExecutiveSummarySection({
     [activeItems]
   );
 
+  const creditCardIdSet = useMemo(
+    () => new Set(accounts.filter((a) => a.type === 'credit_card').map((a) => a.id)),
+    [accounts]
+  );
+
   // Flujo de Caja Libre Mensual Estimado
   const monthlyIncome = useMemo(
     () => activeIncomes.reduce((sum, i) => sum + i.amount, 0),
     [activeIncomes]
   );
   const monthlyExpense = useMemo(
-    () => activeExpenses.reduce((sum, e) => sum + e.amount, 0),
-    [activeExpenses]
+    () =>
+      activeExpenses.reduce(
+        (sum, e) =>
+          sum +
+          getEffectiveRecurringMonthlyAmount(e, {
+            isCreditCard: Boolean(e.account_id && creditCardIdSet.has(e.account_id)),
+          }),
+        0
+      ),
+    [activeExpenses, creditCardIdSet]
   );
   const monthlyFreeCash = monthlyIncome - monthlyExpense;
   const expenseRatioPercent =
@@ -142,7 +156,9 @@ export function ExecutiveSummarySection({
         count: 0,
         items: [],
       };
-      current.amount += exp.amount;
+      current.amount += getEffectiveRecurringMonthlyAmount(exp, {
+        isCreditCard: Boolean(exp.account_id && creditCardIdSet.has(exp.account_id)),
+      });
       current.count += 1;
       current.items.push(exp.title);
       map.set(rawKey, current);

@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS recurring_items (
   category TEXT NOT NULL DEFAULT 'general',
   start_date TEXT NOT NULL,
   end_date TEXT,
+  installments_count INTEGER,
+  total_purchase_amount INTEGER,
   is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),

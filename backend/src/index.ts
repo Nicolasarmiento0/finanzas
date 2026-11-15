@@ -60,6 +60,8 @@ export interface RecurringItemRow {
   category: string;
   start_date: string;
   end_date: string | null;
+  installments_count: number | null;
+  total_purchase_amount: number | null;
   is_active: number;
   created_at: string;
   updated_at: string;
@@ -797,6 +799,46 @@ app.delete('/accounts/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+let recurringInstallmentColumnsEnsured = false;
+
+async function ensureRecurringInstallmentColumns(db: D1Database): Promise<void> {
+  if (recurringInstallmentColumnsEnsured) return;
+
+  const { results } = await db
+    .prepare('PRAGMA table_info(recurring_items)')
+    .all<{ name: string }>();
+
+  const existingColumns = new Set((results ?? []).map((col) => col.name));
+
+  if (!existingColumns.has('installments_count')) {
+    await db
+      .prepare('ALTER TABLE recurring_items ADD COLUMN installments_count INTEGER')
+      .run();
+  }
+
+  if (!existingColumns.has('total_purchase_amount')) {
+    await db
+      .prepare('ALTER TABLE recurring_items ADD COLUMN total_purchase_amount INTEGER')
+      .run();
+  }
+
+  recurringInstallmentColumnsEnsured = true;
+}
+
+function normalizeInstallmentsCount(value: number | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 1) return null;
+  return parsed;
+}
+
+function normalizeTotalPurchaseAmount(value: number | null | undefined): number | null {
+  if (value === undefined || value === null) return null;
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
 // ============================================================================
 // TAREA 1.2: ENDPOINTS CRUD DE MOVIMIENTOS RECURRENTES (/recurring-items)
 // ============================================================================
@@ -807,6 +849,8 @@ app.get('/recurring-items', async (c) => {
   if (!user) {
     return c.json({ error: 'No autorizado' }, 401);
   }
+
+  await ensureRecurringInstallmentColumns(c.env.DB);
 
   const accountIdFilter = c.req.query('account_id');
   const typeFilter = c.req.query('type');
@@ -873,6 +917,8 @@ app.post('/recurring-items', async (c) => {
     return c.json({ error: 'No autorizado' }, 401);
   }
 
+  await ensureRecurringInstallmentColumns(c.env.DB);
+
   const body = await c.req.json<{
     account_id?: string;
     title?: string;
@@ -881,6 +927,8 @@ app.post('/recurring-items', async (c) => {
     category?: string;
     start_date?: string;
     end_date?: string | null;
+    installments_count?: number | null;
+    total_purchase_amount?: number | null;
     is_active?: boolean;
     sub_items?: Array<{ name: string; amount: number }>;
   }>();
@@ -910,6 +958,8 @@ app.post('/recurring-items', async (c) => {
   const category = body.category?.trim() || 'general';
   const startDate = body.start_date?.trim() || new Date().toISOString().slice(0, 10);
   const endDate = body.end_date ? body.end_date.trim() : null;
+  const installmentsCount = normalizeInstallmentsCount(body.installments_count);
+  const totalPurchaseAmount = normalizeTotalPurchaseAmount(body.total_purchase_amount);
   const isActive = body.is_active === false ? 0 : 1;
 
   const initialSubItems = Array.isArray(body.sub_items) ? body.sub_items : [];
@@ -920,8 +970,8 @@ app.post('/recurring-items', async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO recurring_items (
-      id, user_id, account_id, title, amount, type, category, start_date, end_date, is_active
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      id, user_id, account_id, title, amount, type, category, start_date, end_date, installments_count, total_purchase_amount, is_active
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(
       itemId,
@@ -933,6 +983,8 @@ app.post('/recurring-items', async (c) => {
       category,
       startDate,
       endDate,
+      installmentsCount,
+      totalPurchaseAmount,
       isActive
     )
     .run();
@@ -982,6 +1034,8 @@ app.put('/recurring-items/:id', async (c) => {
     return c.json({ error: 'No autorizado' }, 401);
   }
 
+  await ensureRecurringInstallmentColumns(c.env.DB);
+
   const itemId = c.req.param('id');
   const existing = await c.env.DB.prepare(
     'SELECT * FROM recurring_items WHERE id = ? AND user_id = ?'
@@ -1001,6 +1055,8 @@ app.put('/recurring-items/:id', async (c) => {
     category?: string;
     start_date?: string;
     end_date?: string | null;
+    installments_count?: number | null;
+    total_purchase_amount?: number | null;
     is_active?: boolean;
   }>();
 
@@ -1037,6 +1093,14 @@ app.put('/recurring-items/:id', async (c) => {
         ? body.end_date.trim()
         : null
       : existing.end_date;
+  const installmentsCount =
+    body.installments_count !== undefined
+      ? normalizeInstallmentsCount(body.installments_count)
+      : existing.installments_count ?? null;
+  const totalPurchaseAmount =
+    body.total_purchase_amount !== undefined
+      ? normalizeTotalPurchaseAmount(body.total_purchase_amount)
+      : existing.total_purchase_amount ?? null;
   const isActive =
     body.is_active !== undefined ? (body.is_active ? 1 : 0) : existing.is_active;
 
@@ -1049,6 +1113,8 @@ app.put('/recurring-items/:id', async (c) => {
          category = ?,
          start_date = ?,
          end_date = ?,
+         installments_count = ?,
+         total_purchase_amount = ?,
          is_active = ?,
          updated_at = datetime('now')
      WHERE id = ? AND user_id = ?`
@@ -1061,6 +1127,8 @@ app.put('/recurring-items/:id', async (c) => {
       category,
       startDate,
       endDate,
+      installmentsCount,
+      totalPurchaseAmount,
       isActive,
       itemId,
       user.id

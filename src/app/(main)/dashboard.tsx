@@ -87,6 +87,7 @@ import {
   calculateProjectedPosition,
   formatPeriodFull,
   getCurrentPeriod,
+  getEffectiveRecurringMonthlyAmount,
   isItemActiveInMonth,
   savingsAccountToAccountInput,
   shiftPeriod,
@@ -501,9 +502,16 @@ export default function DashboardScreen() {
         period,
         accounts,
         recurringItems,
-        { variableExpenses }
+        { variableExpenses, payments }
       ),
-    [currentBasePeriod, period, accounts, recurringItems, variableExpenses]
+    [
+      currentBasePeriod,
+      period,
+      accounts,
+      recurringItems,
+      variableExpenses,
+      payments,
+    ]
   );
 
   // Resumen mensual activo en el periodo
@@ -518,12 +526,25 @@ export default function DashboardScreen() {
         .reduce((sum, i) => sum + i.amount, 0),
     [activeInMonth]
   );
+  const creditCardIdsInDashboard = useMemo(
+    () => new Set(accounts.filter((a) => a.type === 'credit_card').map((a) => a.id)),
+    [accounts]
+  );
   const monthlyExpense = useMemo(
     () =>
       activeInMonth
         .filter((i) => i.type === 'expense')
-        .reduce((sum, i) => sum + i.amount, 0),
-    [activeInMonth]
+        .reduce(
+          (sum, i) =>
+            sum +
+            getEffectiveRecurringMonthlyAmount(i, {
+              isCreditCard: Boolean(
+                i.account_id && creditCardIdsInDashboard.has(i.account_id)
+              ),
+            }),
+          0
+        ),
+    [activeInMonth, creditCardIdsInDashboard]
   );
   const monthlyFreeCash = monthlyIncome - monthlyExpense;
 
@@ -534,9 +555,10 @@ export default function DashboardScreen() {
         accounts,
         recurringItems,
         variableExpenses,
+        payments,
         futurePurchases,
       }),
-    [period, accounts, recurringItems, variableExpenses, futurePurchases, isPrivacyEnabled]
+    [period, accounts, recurringItems, variableExpenses, payments, futurePurchases, isPrivacyEnabled]
   );
   const topInsight = intelligenceReport.insights[0];
 
@@ -1035,6 +1057,7 @@ export default function DashboardScreen() {
             onChangePeriod={setPeriod}
             accounts={accounts}
             recurringItems={recurringItems}
+            payments={payments}
             paidItemIdsInPeriod={paidItemIdsInPeriod}
             paidCardIdsInPeriod={paidCardIdsInPeriod}
             onTogglePaid={handleToggleRecurringPaid}
@@ -1052,6 +1075,8 @@ export default function DashboardScreen() {
             period={period}
             accounts={accounts}
             recurringItems={recurringItems}
+            payments={payments}
+            onToggleCardPaid={handleToggleCardPaid}
             onScrollToEdit={handleScrollToCardsEdit}
             onCreateAccount={handleCreateAccount}
             onUpdateAccount={handleUpdateAccount}

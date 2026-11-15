@@ -82,38 +82,73 @@ export function diffPeriodsInMonths(fromPeriod: string, toPeriod: string): numbe
   return Math.max(1, (y2 - y1) * 12 + (m2 - m1));
 }
 
+export type SharedExpenseCategoryIcon =
+  | 'Utensils'
+  | 'Coffee'
+  | 'Tag'
+  | 'Sparkles'
+  | 'HandCoins'
+  | 'Receipt';
+
+export interface SharedExpenseCategory {
+  id: string;
+  label: string;
+  color: string;
+  iconName: SharedExpenseCategoryIcon;
+}
+
 /**
- * Etiquetas legibles para categorías de gastos
+ * Catálogo unificado de categorías para Gastos Variables del Mes y Gastos en Tarjetas de Crédito
+ */
+export const SHARED_EXPENSE_CATEGORIES: SharedExpenseCategory[] = [
+  { id: 'alimentacion', label: 'Almuerzo / Comida', iconName: 'Utensils', color: '#10B981' },
+  { id: 'bebidas', label: 'Bebida / Café', iconName: 'Coffee', color: '#F59E0B' },
+  { id: 'transporte', label: 'Transporte / Uber', iconName: 'Tag', color: '#38BDF8' },
+  { id: 'entretenimiento', label: 'Ocio / Salidas', iconName: 'Sparkles', color: '#EC4899' },
+  { id: 'prestamo', label: 'Préstamo / Deuda', iconName: 'HandCoins', color: '#FB923C' },
+  { id: 'general', label: 'Compras / Varios', iconName: 'Receipt', color: '#94A3B8' },
+];
+
+export const SHARED_EXPENSE_CATEGORY_IDS = new Set(
+  SHARED_EXPENSE_CATEGORIES.map((c) => c.id)
+);
+
+/**
+ * Etiquetas legibles para categorías de gastos (unificadas + compatibilidad retroactiva)
  */
 export const CATEGORY_LABELS: Record<string, string> = {
+  alimentacion: 'Almuerzo / Comida',
+  bebidas: 'Bebida / Café',
+  transporte: 'Transporte / Uber',
+  entretenimiento: 'Ocio / Salidas',
+  prestamo: 'Préstamo / Deuda',
+  general: 'Compras / Varios',
   educacion: 'Educación & Cursos',
   vivienda: 'Vivienda & Arriendo',
-  transporte: 'Transporte & Vehículo',
-  alimentacion: 'Alimentación & Supermercado',
   salud: 'Salud & Seguros',
   suscripciones: 'Suscripciones & Apps',
-  prestamo: 'Préstamos & Créditos',
+  tecnologia: 'Tecnología',
   servicios: 'Servicios Básicos',
-  entretenimiento: 'Entretenimiento',
   fijo: 'Gastos Fijos Generales',
-  general: 'Otros / General',
 };
 
 /**
  * Paleta semántica fija de alto contraste y diseño Apple/Tesla para categorías
  */
 export const CATEGORY_COLORS: Record<string, string> = {
-  educacion: '#38BDF8',       // Azul Eléctrico
-  vivienda: '#A855F7',        // Púrpura Violeta
-  transporte: '#F59E0B',      // Ámbar Dorado
   alimentacion: '#10B981',    // Verde Esmeralda
-  salud: '#F43F5E',           // Rojo Coral
-  suscripciones: '#818CF8',   // Índigo Neón
-  prestamo: '#FB923C',        // Naranja Intenso
-  servicios: '#06B6D4',       // Cian Aqua
+  bebidas: '#F59E0B',         // Ámbar Dorado
+  transporte: '#38BDF8',      // Azul Eléctrico
   entretenimiento: '#EC4899', // Rosa Fucsia
-  fijo: '#2DD4BF',            // Menta Turquesa
+  prestamo: '#FB923C',        // Naranja Intenso
   general: '#94A3B8',         // Gris Plata Platino
+  educacion: '#38BDF8',
+  vivienda: '#A855F7',
+  salud: '#F43F5E',
+  suscripciones: '#818CF8',
+  tecnologia: '#38BDF8',
+  servicios: '#06B6D4',
+  fijo: '#2DD4BF',
 };
 
 export const FALLBACK_CATEGORY_PALETTE = [
@@ -143,8 +178,9 @@ export function getCategoryColor(categoryKey: string, fallbackIdx = 0): string {
   }
   if (clean.includes('educ') || clean.includes('colegio') || clean.includes('univers')) return '#38BDF8';
   if (clean.includes('viv') || clean.includes('arriend') || clean.includes('depa')) return '#A855F7';
-  if (clean.includes('transp') || clean.includes('auto') || clean.includes('vehic') || clean.includes('bencina') || clean.includes('tag')) return '#F59E0B';
-  if (clean.includes('alim') || clean.includes('super') || clean.includes('comida')) return '#10B981';
+  if (clean.includes('bebid') || clean.includes('cafe') || clean.includes('café') || clean.includes('jugo')) return '#F59E0B';
+  if (clean.includes('transp') || clean.includes('auto') || clean.includes('vehic') || clean.includes('bencina') || clean.includes('tag') || clean.includes('uber')) return '#38BDF8';
+  if (clean.includes('alim') || clean.includes('super') || clean.includes('comida') || clean.includes('almuerz')) return '#10B981';
   if (clean.includes('salud') || clean.includes('medic') || clean.includes('segur') || clean.includes('isapre') || clean.includes('fonasa')) return '#F43F5E';
   if (clean.includes('suscrip') || clean.includes('app') || clean.includes('stream') || clean.includes('spotify') || clean.includes('netflix') || clean.includes('apple')) return '#818CF8';
   if (clean.includes('prest') || clean.includes('cred') || clean.includes('cuota') || clean.includes('deuda')) return '#FB923C';
@@ -201,14 +237,321 @@ export function isItemActiveInMonth(item: RecurringItem, period: string): boolea
   return true;
 }
 
+export interface InstallmentSchedule {
+  totalInstallments: number;
+  installmentAmount: number;
+  totalPurchaseAmount: number;
+  startPeriod: string;
+  endPeriod: string;
+  periods: string[];
+}
+
+export interface InstallmentProgress {
+  isInstallment: boolean;
+  totalInstallments: number;
+  currentInstallmentNumber: number | null;
+  installmentAmount: number;
+  totalPurchaseAmount: number;
+  paidInstallmentsCount: number;
+  remainingInstallmentsCount: number;
+  committedAmount: number;
+  recoveredAmount: number;
+  isPaidInCurrentPeriod: boolean;
+  startPeriod: string;
+  endPeriod: string;
+}
+
+export interface InstallmentCommittedSummary {
+  hasInstallments: boolean;
+  committedTotal: number;
+  recoveredTotal: number;
+  originalTotal: number;
+  paidInstallmentsCount: number;
+  totalInstallmentsCount: number;
+}
+
+function getMonthDifference(fromPeriod: string, toPeriod: string): number {
+  const [y1, m1] = fromPeriod.split('-').map(Number);
+  const [y2, m2] = toPeriod.split('-').map(Number);
+  if (!y1 || !m1 || !y2 || !m2) return 0;
+  return (y2 - y1) * 12 + (m2 - m1);
+}
+
+const NON_INSTALLMENT_FINITE_CATEGORIES = new Set([
+  'educacion',
+  'suscripciones',
+  'servicios',
+  'prestamo',
+  'deuda',
+  'credito',
+  'arriendo',
+  'vivienda',
+]);
+
 /**
- * Tarea 2.2: Cálculo dinámico de cupo disponible y alerta de corte de facturación mensual.
- * Cupo Disponible = Cupo Total - Monto Facturado/Utilizado
+ * Obtiene el calendario de cuotas de una compra en cuotas.
+ * Soporta metadatos explícitos (`installments_count` / `total_purchase_amount`) y también
+ * compras heredadas en tarjetas con `"N cuotas"` en el título o plazo finito en categorías de compra.
+ */
+export function getInstallmentSchedule(
+  item: RecurringItem,
+  options?: { isCreditCard?: boolean }
+): InstallmentSchedule | null {
+  const hasExplicitCount =
+    typeof item.installments_count === 'number' && item.installments_count >= 1;
+  const hasExplicitTotal =
+    typeof item.total_purchase_amount === 'number' && item.total_purchase_amount > 0;
+
+  const startPeriod = toYearMonth(item.start_date) || getCurrentPeriod();
+  const endYM = toYearMonth(item.end_date);
+
+  let inferredFromTitle: number | null = null;
+  if (!hasExplicitCount && !hasExplicitTotal && item.title) {
+    const match = item.title.match(/(?:\(|^|\s)(\d+)\s*cuotas?(?:\)|$|\s)/i);
+    if (match) {
+      const n = Number.parseInt(match[1], 10);
+      if (Number.isFinite(n) && n >= 1 && n <= 60) {
+        inferredFromTitle = n;
+      }
+    }
+  }
+
+  let inferredFromFiniteCardTerm: number | null = null;
+  if (
+    !hasExplicitCount &&
+    !hasExplicitTotal &&
+    !inferredFromTitle &&
+    options?.isCreditCard &&
+    endYM &&
+    endYM >= startPeriod
+  ) {
+    const cat = (item.category || '').toLowerCase().trim();
+    if (!NON_INSTALLMENT_FINITE_CATEGORIES.has(cat)) {
+      const span = getMonthDifference(startPeriod, endYM) + 1;
+      if (span >= 1 && span <= 60) {
+        inferredFromFiniteCardTerm = span;
+      }
+    }
+  }
+
+  if (
+    !hasExplicitCount &&
+    !hasExplicitTotal &&
+    !inferredFromTitle &&
+    !inferredFromFiniteCardTerm
+  ) {
+    return null;
+  }
+
+  const totalInstallments = hasExplicitCount
+    ? Math.max(1, Math.round(item.installments_count!))
+    : inferredFromTitle
+    ? inferredFromTitle
+    : inferredFromFiniteCardTerm
+    ? inferredFromFiniteCardTerm
+    : endYM
+    ? Math.max(1, getMonthDifference(startPeriod, endYM) + 1)
+    : 1;
+  const endPeriod = shiftPeriod(startPeriod, totalInstallments - 1);
+  const rawAmount = Math.max(0, Math.round(item.amount || 0));
+  const totalPurchaseAmount = hasExplicitTotal
+    ? Math.round(item.total_purchase_amount!)
+    : rawAmount;
+  const installmentAmount =
+    hasExplicitTotal && rawAmount < totalPurchaseAmount
+      ? rawAmount
+      : Math.round(totalPurchaseAmount / totalInstallments);
+
+  const periods: string[] = [];
+  for (let i = 0; i < totalInstallments; i++) {
+    periods.push(shiftPeriod(startPeriod, i));
+  }
+
+  return {
+    totalInstallments,
+    installmentAmount,
+    totalPurchaseAmount,
+    startPeriod,
+    endPeriod,
+    periods,
+  };
+}
+
+/**
+ * Devuelve el monto mensual efectivo de un ítem recurrente:
+ * si es una compra en cuotas (explícita o en tarjeta con plazo finito), devuelve el valor dividido de la cuota mensual (`installmentAmount`);
+ * de lo contrario, devuelve `item.amount`.
+ */
+export function getEffectiveRecurringMonthlyAmount(
+  item: RecurringItem,
+  options?: { isCreditCard?: boolean }
+): number {
+  const schedule = getInstallmentSchedule(item, {
+    isCreditCard: options?.isCreditCard,
+  });
+  return schedule
+    ? schedule.installmentAmount
+    : Math.max(0, Math.round(item.amount || 0));
+}
+
+/**
+ * Calcula el progreso de cuotas, capital pendiente en cupo y cupo recuperado para un ítem en `period`.
+ */
+export function getInstallmentProgress(
+  item: RecurringItem,
+  period: string,
+  payments?: MonthlyPayment[],
+  cardId?: string,
+  options?: { isCreditCard?: boolean }
+): InstallmentProgress | null {
+  const schedule = getInstallmentSchedule(item, {
+    isCreditCard: options?.isCreditCard ?? Boolean(cardId || item.account_id),
+  });
+  if (!schedule) return null;
+
+  const targetYM = toYearMonth(period) || getCurrentPeriod();
+  const targetCardId = cardId || item.account_id;
+
+  const paidPeriods = new Set<string>();
+  if (payments && payments.length > 0) {
+    for (const p of payments) {
+      if (!p.is_paid) continue;
+      const pYM = toYearMonth(p.period);
+      if (!pYM) continue;
+      if (
+        (p.target_type === 'credit_card' && p.target_id === targetCardId) ||
+        (p.target_type === 'recurring_item' && p.target_id === item.id)
+      ) {
+        paidPeriods.add(pYM);
+      }
+    }
+  }
+
+  if (targetYM < schedule.startPeriod) {
+    return {
+      isInstallment: true,
+      totalInstallments: schedule.totalInstallments,
+      currentInstallmentNumber: null,
+      installmentAmount: schedule.installmentAmount,
+      totalPurchaseAmount: schedule.totalPurchaseAmount,
+      paidInstallmentsCount: 0,
+      remainingInstallmentsCount: schedule.totalInstallments,
+      committedAmount: 0,
+      recoveredAmount: 0,
+      isPaidInCurrentPeriod: false,
+      startPeriod: schedule.startPeriod,
+      endPeriod: schedule.endPeriod,
+    };
+  }
+
+  let paidInstallmentsCount = 0;
+  for (const m of schedule.periods) {
+    if (m <= targetYM && paidPeriods.has(m)) {
+      paidInstallmentsCount += 1;
+    }
+  }
+
+  const remainingInstallmentsCount = Math.max(
+    0,
+    schedule.totalInstallments - paidInstallmentsCount
+  );
+  const recoveredAmount =
+    paidInstallmentsCount >= schedule.totalInstallments
+      ? schedule.totalPurchaseAmount
+      : Math.min(
+          schedule.totalPurchaseAmount,
+          paidInstallmentsCount * schedule.installmentAmount
+        );
+  const committedAmount = Math.max(0, schedule.totalPurchaseAmount - recoveredAmount);
+
+  const monthOffset = getMonthDifference(schedule.startPeriod, targetYM);
+  const currentInstallmentNumber =
+    monthOffset >= 0 && monthOffset < schedule.totalInstallments
+      ? monthOffset + 1
+      : null;
+
+  return {
+    isInstallment: true,
+    totalInstallments: schedule.totalInstallments,
+    currentInstallmentNumber,
+    installmentAmount: schedule.installmentAmount,
+    totalPurchaseAmount: schedule.totalPurchaseAmount,
+    paidInstallmentsCount,
+    remainingInstallmentsCount,
+    committedAmount,
+    recoveredAmount,
+    isPaidInCurrentPeriod: paidPeriods.has(targetYM),
+    startPeriod: schedule.startPeriod,
+    endPeriod: schedule.endPeriod,
+  };
+}
+
+/**
+ * Consolida el capital comprometido en cuotas pendientes y el cupo recuperado para una tarjeta.
+ */
+export function calculateInstallmentCommittedBalance(
+  card: Account,
+  cardRecurringExpenses: RecurringItem[],
+  period: string,
+  payments?: MonthlyPayment[]
+): InstallmentCommittedSummary {
+  let hasInstallments = false;
+  let committedTotal = 0;
+  let recoveredTotal = 0;
+  let originalTotal = 0;
+  let paidInstallmentsCount = 0;
+  let totalInstallmentsCount = 0;
+
+  for (const item of cardRecurringExpenses) {
+    if (!item.is_active || item.type !== 'expense') continue;
+    if (item.account_id && item.account_id !== card.id) continue;
+
+    const progress = getInstallmentProgress(item, period, payments, card.id, {
+      isCreditCard: true,
+    });
+    if (!progress) continue;
+
+    hasInstallments = true;
+    committedTotal += progress.committedAmount;
+    recoveredTotal += progress.recoveredAmount;
+    originalTotal += progress.totalPurchaseAmount;
+    paidInstallmentsCount += progress.paidInstallmentsCount;
+    totalInstallmentsCount += progress.totalInstallments;
+  }
+
+  return {
+    hasInstallments,
+    committedTotal,
+    recoveredTotal,
+    originalTotal,
+    paidInstallmentsCount,
+    totalInstallmentsCount,
+  };
+}
+
+/**
+ * Tarea 2.2 + v4.5: Cálculo dinámico de cupo disponible, facturación del mes y recuperación de cupo.
+ * - `monthlyBilledCharges` / `recurringCharges`: solo lo facturable en el mes (cuota del mes + suscripciones).
+ * - `installmentCommittedTotal`: capital pendiente de todas las cuotas por pagar (evidenciado solo en la tarjeta).
+ * - `usedAmount`: saldo base pendiente + cargos continuos impagos del mes + capital pendiente en cuotas.
  */
 export interface CreditCardMetrics {
   creditLimit: number;
   baseBalance: number;
+  effectiveBaseBalance: number;
+  pendingBaseBalance: number;
   recurringCharges: number;
+  monthlyBilledCharges: number;
+  monthlyBilledTotal: number;
+  pendingBilledTotal: number;
+  nonInstallmentCharges: number;
+  unpaidNonInstallmentCharges: number;
+  installmentMonthlyCharges: number;
+  installmentCommittedTotal: number;
+  recoveredCredit: number;
+  paidInstallmentsCount: number;
+  totalInstallmentsCount: number;
+  isPaidInPeriod: boolean;
   usedAmount: number;
   availableCredit: number;
   usagePercent: number;
@@ -223,14 +566,109 @@ export interface CreditCardMetrics {
 export function calculateCreditCardMetrics(
   card: Account,
   cardRecurringExpenses: RecurringItem[],
-  period: string
+  period: string,
+  payments?: MonthlyPayment[]
 ): CreditCardMetrics {
-  const activeExpenses = cardRecurringExpenses.filter(
-    (item) => item.type === 'expense' && isItemActiveInMonth(item, period)
+  const targetYM = toYearMonth(period) || getCurrentPeriod();
+  const cardExpenses = cardRecurringExpenses.filter(
+    (item) => item.type === 'expense' && (!item.account_id || item.account_id === card.id)
   );
-  const recurringCharges = activeExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const activeExpenses = cardExpenses.filter((item) =>
+    isItemActiveInMonth(item, targetYM)
+  );
+
+  const isPaidInPeriod = Boolean(
+    payments?.some(
+      (p) =>
+        p.target_type === 'credit_card' &&
+        p.target_id === card.id &&
+        toYearMonth(p.period) === targetYM &&
+        p.is_paid
+    )
+  );
+
+  const paidRecurringItemIds = new Set(
+    (payments || [])
+      .filter(
+        (p) =>
+          p.target_type === 'recurring_item' &&
+          toYearMonth(p.period) === targetYM &&
+          p.is_paid
+      )
+      .map((p) => p.target_id)
+  );
+
+  let installmentMonthlyCharges = 0;
+  let unpaidInstallmentMonthlyCharges = 0;
+  let nonInstallmentCharges = 0;
+  let unpaidNonInstallmentCharges = 0;
+
+  for (const item of activeExpenses) {
+    const schedule = getInstallmentSchedule(item, { isCreditCard: true });
+    if (schedule) {
+      installmentMonthlyCharges += schedule.installmentAmount;
+      if (!isPaidInPeriod && !paidRecurringItemIds.has(item.id)) {
+        unpaidInstallmentMonthlyCharges += schedule.installmentAmount;
+      }
+    } else {
+      nonInstallmentCharges += item.amount;
+      if (!isPaidInPeriod && !paidRecurringItemIds.has(item.id)) {
+        unpaidNonInstallmentCharges += item.amount;
+      }
+    }
+  }
+
+  const recurringCharges = installmentMonthlyCharges + nonInstallmentCharges;
   const baseBalance = Math.max(0, card.current_balance || 0);
-  const usedAmount = baseBalance + recurringCharges;
+  const currentBasePeriod = getCurrentPeriod();
+  const settledBasePriorToTarget =
+    targetYM > currentBasePeriod &&
+    Boolean(
+      payments?.some((p) => {
+        if (
+          !p.is_paid ||
+          p.target_type !== 'credit_card' ||
+          p.target_id !== card.id
+        ) {
+          return false;
+        }
+        const pYM = toYearMonth(p.period);
+        return Boolean(pYM && pYM >= currentBasePeriod && pYM < targetYM);
+      })
+    );
+  const effectiveBaseBalance = settledBasePriorToTarget ? 0 : baseBalance;
+  const pendingBaseBalance = isPaidInPeriod ? 0 : effectiveBaseBalance;
+  const monthlyBilledTotal = effectiveBaseBalance + recurringCharges;
+  const pendingBilledTotal = isPaidInPeriod
+    ? 0
+    : Math.max(
+        0,
+        pendingBaseBalance +
+          unpaidNonInstallmentCharges +
+          unpaidInstallmentMonthlyCharges
+      );
+
+  const installmentSummary = calculateInstallmentCommittedBalance(
+    card,
+    cardExpenses,
+    targetYM,
+    payments
+  );
+
+  const usedAmount =
+    pendingBaseBalance +
+    unpaidNonInstallmentCharges +
+    installmentSummary.committedTotal;
+
+  const paidNonInstallment = Math.max(
+    0,
+    nonInstallmentCharges - unpaidNonInstallmentCharges
+  );
+  const recoveredCredit =
+    installmentSummary.recoveredTotal +
+    (settledBasePriorToTarget || isPaidInPeriod ? baseBalance : 0) +
+    paidNonInstallment;
+
   const creditLimit = Math.max(0, card.credit_limit || 0);
   const availableCredit = Math.max(0, creditLimit - usedAmount);
   const usagePercent =
@@ -266,7 +704,20 @@ export function calculateCreditCardMetrics(
   return {
     creditLimit,
     baseBalance,
+    effectiveBaseBalance,
+    pendingBaseBalance,
     recurringCharges,
+    monthlyBilledCharges: recurringCharges,
+    monthlyBilledTotal,
+    pendingBilledTotal,
+    nonInstallmentCharges,
+    unpaidNonInstallmentCharges,
+    installmentMonthlyCharges,
+    installmentCommittedTotal: installmentSummary.committedTotal,
+    recoveredCredit,
+    paidInstallmentsCount: installmentSummary.paidInstallmentsCount,
+    totalInstallmentsCount: installmentSummary.totalInstallmentsCount,
+    isPaidInPeriod,
     usedAmount,
     availableCredit,
     usagePercent,
@@ -523,7 +974,14 @@ export function buildMonthlySurplusList(
       .reduce((sum, i) => sum + i.amount, 0);
     const monthExpense = activeItems
       .filter((i) => i.type === 'expense')
-      .reduce((sum, i) => sum + i.amount, 0);
+      .reduce(
+        (sum, i) =>
+          sum +
+          getEffectiveRecurringMonthlyAmount(i, {
+            isCreditCard: Boolean(i.account_id),
+          }),
+        0
+      );
 
     surplusList.push(monthIncome - monthExpense);
   }
@@ -556,7 +1014,9 @@ export function getExpiringExpensesInHorizon(
     if (endYM >= basePeriod && endYM < horizonEndPeriod) {
       results.push({
         title: item.title,
-        amount: item.amount,
+        amount: getEffectiveRecurringMonthlyAmount(item, {
+          isCreditCard: Boolean(item.account_id),
+        }),
         endPeriod: endYM,
         endLabel: formatPeriodShort(endYM),
       });
@@ -875,6 +1335,7 @@ export function calculateProjectedPosition(
   options?: {
     applyTenPercentSurplusRule?: boolean;
     variableExpenses?: VariableExpense[];
+    payments?: MonthlyPayment[];
   }
 ): ProjectedPosition {
   const checkingAccounts = accounts.filter((a) => a.type === 'checking');
@@ -927,6 +1388,9 @@ export function calculateProjectedPosition(
     0
   );
 
+  const creditCardAccountIds = new Set(creditCardAccounts.map((c) => c.id));
+  const loanAccountIds = new Set(loanAccounts.map((l) => l.id));
+
   // Calcular diferencia en meses entre basePeriod y targetPeriod
   const [by, bm] = basePeriod.split('-').map(Number);
   const [ty, tm] = targetPeriod.split('-').map(Number);
@@ -944,7 +1408,16 @@ export function calculateProjectedPosition(
         .reduce((sum, i) => sum + i.amount, 0);
       const mExpense = monthItems
         .filter((i) => i.type === 'expense')
-        .reduce((sum, i) => sum + i.amount, 0);
+        .reduce(
+          (sum, i) =>
+            sum +
+            getEffectiveRecurringMonthlyAmount(i, {
+              isCreditCard: Boolean(
+                i.account_id && creditCardAccountIds.has(i.account_id)
+              ),
+            }),
+          0
+        );
       const mSurplus = mIncome - mExpense;
 
       for (const s of savingsState) {
@@ -977,7 +1450,16 @@ export function calculateProjectedPosition(
         .reduce((sum, i) => sum + i.amount, 0);
       const mExpense = monthItems
         .filter((i) => i.type === 'expense')
-        .reduce((sum, i) => sum + i.amount, 0);
+        .reduce(
+          (sum, i) =>
+            sum +
+            getEffectiveRecurringMonthlyAmount(i, {
+              isCreditCard: Boolean(
+                i.account_id && creditCardAccountIds.has(i.account_id)
+              ),
+            }),
+          0
+        );
       const mSurplus = mIncome - mExpense;
 
       for (const s of savingsState) {
@@ -1002,20 +1484,16 @@ export function calculateProjectedPosition(
     }
   }
 
-  const creditCardAccountIds = new Set(creditCardAccounts.map((c) => c.id));
-  const loanAccountIds = new Set(loanAccounts.map((l) => l.id));
-
-  // 1. Deuda de Tarjetas de Crédito: saldo base + cargos activos en targetPeriod
+  // 1. Deuda de Tarjetas de Crédito: considera saldo base, cargos activos y cuotas pendientes de pago
   const targetCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
-    const cardCharges = recurringItems
-      .filter(
-        (item) =>
-          item.account_id === card.id &&
-          item.type === 'expense' &&
-          isItemActiveInMonth(item, targetPeriod)
-      )
-      .reduce((s, item) => s + item.amount, 0);
-    return sum + (card.current_balance || 0) + cardCharges;
+    const cardExpenses = recurringItems.filter(
+      (item) => item.account_id === card.id && item.type === 'expense'
+    );
+    return (
+      sum +
+      calculateCreditCardMetrics(card, cardExpenses, targetPeriod, options?.payments)
+        .usedAmount
+    );
   }, 0);
 
   // 2. Deuda de Cuentas tipo Préstamo
@@ -1056,15 +1534,14 @@ export function calculateProjectedPosition(
 
   // Cálculo en basePeriod para diffFromCurrentNetWorth
   const baseCreditCardsDebt = creditCardAccounts.reduce((sum, card) => {
-    const cardCharges = recurringItems
-      .filter(
-        (item) =>
-          item.account_id === card.id &&
-          item.type === 'expense' &&
-          isItemActiveInMonth(item, basePeriod)
-      )
-      .reduce((s, item) => s + item.amount, 0);
-    return sum + (card.current_balance || 0) + cardCharges;
+    const cardExpenses = recurringItems.filter(
+      (item) => item.account_id === card.id && item.type === 'expense'
+    );
+    return (
+      sum +
+      calculateCreditCardMetrics(card, cardExpenses, basePeriod, options?.payments)
+        .usedAmount
+    );
   }, 0);
 
   const baseFixedLoansDebt = recurringItems
@@ -1287,13 +1764,23 @@ export function evaluateFuturePurchase(
     paymentMode === 'recurring_subscription' || item.category === 'suscripcion';
 
   // 1. Flujo de caja y liquidez del período
+  const creditCardIdSet = new Set(
+    accounts.filter((a) => a.type === 'credit_card').map((a) => a.id)
+  );
   const activeRecurring = recurringItems.filter((r) => isItemActiveInMonth(r, period));
   const monthlyIncome = activeRecurring
     .filter((r) => r.type === 'income')
     .reduce((sum, r) => sum + r.amount, 0);
   const monthlyFixedExpenses = activeRecurring
     .filter((r) => r.type === 'expense')
-    .reduce((sum, r) => sum + r.amount, 0);
+    .reduce(
+      (sum, r) =>
+        sum +
+        getEffectiveRecurringMonthlyAmount(r, {
+          isCreditCard: Boolean(r.account_id && creditCardIdSet.has(r.account_id)),
+        }),
+      0
+    );
 
   const periodVariables = variableExpenses.filter(
     (v) => (v.period || v.date?.slice(0, 7)) === period
@@ -1367,7 +1854,7 @@ export function evaluateFuturePurchase(
   if (preferredCard) {
     cardName = preferredCard.name;
     const cardRecurring = recurringItems.filter((r) => r.account_id === preferredCard.id);
-    const metrics = calculateCreditCardMetrics(preferredCard, cardRecurring, period);
+    const metrics = calculateCreditCardMetrics(preferredCard, cardRecurring, period, payments);
     availableCredit = metrics.availableCredit;
     currentUsagePercent = metrics.usagePercent;
     const newUsed = metrics.usedAmount + amount;
