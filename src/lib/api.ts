@@ -1,7 +1,7 @@
 import { clearToken, getStoredItem, getToken, saveStoredItem, saveToken } from './storage';
 
 export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL || 'https://finanzapp-api.finanzapp.workers.dev';
+  process.env.EXPO_PUBLIC_API_URL || 'https://finanzapp-api.nsarmiento.workers.dev';
 
 export interface User {
   id: string;
